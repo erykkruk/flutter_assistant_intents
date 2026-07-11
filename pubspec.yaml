@@ -1,0 +1,38 @@
+name: flutter_assistant_intents
+description: >-
+  Expose task-app actions to voice assistants — iOS App Intents (Siri,
+  Spotlight, Shortcuts) and Android app shortcuts — with typed Dart handlers.
+version: 0.1.0
+
+homepage: https://github.com/erykkruk/flutter_assistant_intents
+repository: https://github.com/erykkruk/flutter_assistant_intents
+issue_tracker: https://github.com/erykkruk/flutter_assistant_intents/issues
+
+topics:
+  - siri
+  - shortcuts
+  - app-intents
+  - voice-assistant
+  - deep-linking
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.erykkruk.flutter_assistant_intents
+        pluginClass: FlutterAssistantIntentsPlugin
+      ios:
+        pluginClass: FlutterAssistantIntentsPlugin

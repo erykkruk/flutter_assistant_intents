@@ -1,0 +1,103 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_assistant_intents/flutter_assistant_intents.dart';
+
+/// In-memory task store standing in for a real app's repository.
+final List<AssistantTask> _tasks = <AssistantTask>[
+  AssistantTask(id: '1', title: 'Water the plants', dueDate: DateTime.now()),
+  const AssistantTask(id: '2', title: 'Read a book'),
+];
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  AssistantIntents.instance.registerHandlers(
+    AssistantIntentHandlers(
+      onAddTask: (request) async {
+        if (request.title.isEmpty) {
+          // Android shortcut launch — a real app would open its compose UI.
+          return const AssistantTaskResult.failure(
+            'Tell me what the task should be called.',
+          );
+        }
+        final task = AssistantTask(
+          id: '${_tasks.length + 1}',
+          title: request.title,
+          dueDate: request.dueDate,
+        );
+        _tasks.add(task);
+        return AssistantTaskResult.success(
+          message: "Added '${request.title}' to your list.",
+          taskId: task.id,
+        );
+      },
+      onCompleteTask: (request) async {
+        final index = _tasks.indexWhere(
+          (t) => t.title.toLowerCase() == request.title.toLowerCase(),
+        );
+        if (index == -1) {
+          return AssistantTaskResult.failure(
+            "I couldn't find a task called '${request.title}'.",
+          );
+        }
+        final task = _tasks[index];
+        _tasks[index] = AssistantTask(
+          id: task.id,
+          title: task.title,
+          dueDate: task.dueDate,
+          isCompleted: true,
+        );
+        return AssistantTaskResult.success(
+          message: "Completed '${task.title}'.",
+          taskId: task.id,
+        );
+      },
+      onQueryTasks: (request) async {
+        final open = _tasks.where((t) => !t.isCompleted);
+        if (request.filter == TaskQueryFilter.all) {
+          return open.toList();
+        }
+        final now = DateTime.now();
+        return open
+            .where(
+              (t) =>
+                  t.dueDate != null &&
+                  t.dueDate!.year == now.year &&
+                  t.dueDate!.month == now.month &&
+                  t.dueDate!.day == now.day,
+            )
+            .toList();
+      },
+    ),
+  );
+
+  unawaited(AssistantIntents.instance.updateShortcuts());
+
+  runApp(const ExampleApp());
+}
+
+class ExampleApp extends StatelessWidget {
+  const ExampleApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Assistant Intents Example',
+      home: Scaffold(
+        appBar: AppBar(title: const Text('Assistant Intents Example')),
+        body: ListView(
+          children: [
+            for (final task in _tasks)
+              ListTile(
+                title: Text(task.title),
+                trailing: task.isCompleted
+                    ? const Icon(Icons.check)
+                    : const SizedBox.shrink(),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
