@@ -226,6 +226,112 @@ void main() {
     });
   });
 
+  group('intent.performAction', () {
+    test('decodes the action id and parameters', () async {
+      AssistantActionRequest? received;
+      AssistantIntents.instance.registerHandlers(
+        AssistantIntentHandlers(
+          onAction: (request) async {
+            received = request;
+            return const AssistantTaskResult.success(message: 'Ordered');
+          },
+        ),
+      );
+
+      final response = await invokeFromNative('intent.performAction', {
+        'action': 'order_coffee',
+        'parameters': {'size': 'large', 'shots': 2},
+      });
+
+      expect(received!.action, 'order_coffee');
+      expect(received!.parameters, {'size': 'large', 'shots': 2});
+      final map = response! as Map<Object?, Object?>;
+      expect(map['success'], isTrue);
+      expect(map['message'], 'Ordered');
+    });
+
+    test('missing parameters decode as an empty map', () async {
+      AssistantActionRequest? received;
+      AssistantIntents.instance.registerHandlers(
+        AssistantIntentHandlers(
+          onAction: (request) async {
+            received = request;
+            return const AssistantTaskResult.success();
+          },
+        ),
+      );
+
+      await invokeFromNative('intent.performAction', {'action': 'refresh'});
+
+      expect(received!.action, 'refresh');
+      expect(received!.parameters, isEmpty);
+    });
+
+    test('a throwing handler yields a generic speakable failure', () async {
+      AssistantIntents.instance.registerHandlers(
+        AssistantIntentHandlers(
+          onAction: (request) async => throw StateError('boom'),
+        ),
+      );
+
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (details) {};
+      addTearDown(() => FlutterError.onError = originalOnError);
+
+      final response =
+          await invokeFromNative('intent.performAction', {'action': 'x'});
+
+      final map = response! as Map<Object?, Object?>;
+      expect(map['success'], isFalse);
+      expect(map['message'], isNotEmpty);
+    });
+  });
+
+  group('unregistered handlers', () {
+    test('task intents answer with a polite failure', () async {
+      AssistantIntents.instance.registerHandlers(
+        AssistantIntentHandlers(
+          onAction: (request) async => const AssistantTaskResult.success(),
+        ),
+      );
+
+      final addResponse =
+          await invokeFromNative('intent.addTask', {'title': 'X'});
+      final completeResponse =
+          await invokeFromNative('intent.completeTask', {'title': 'X'});
+
+      for (final response in [addResponse, completeResponse]) {
+        final map = response! as Map<Object?, Object?>;
+        expect(map['success'], isFalse);
+        expect(map['message'], isNotEmpty);
+      }
+    });
+
+    test('query intent answers with an empty list', () async {
+      AssistantIntents.instance.registerHandlers(
+        AssistantIntentHandlers(
+          onAction: (request) async => const AssistantTaskResult.success(),
+        ),
+      );
+
+      final response =
+          await invokeFromNative('intent.queryTasks', {'filter': 'today'});
+
+      expect(response, isEmpty);
+    });
+
+    test('performAction answers with a polite failure', () async {
+      AssistantIntents.instance.registerHandlers(handlers());
+
+      final response =
+          await invokeFromNative('intent.performAction', {'action': 'x'});
+
+      final map = response! as Map<Object?, Object?>;
+      expect(map['success'], isFalse);
+      expect(map['message'], isNotEmpty);
+    });
+  });
+
   group('updateShortcuts', () {
     test('sends the Android labels over the channel', () async {
       await AssistantIntents.instance.updateShortcuts(
@@ -241,6 +347,43 @@ void main() {
       expect(args['addTaskLabel'], 'Dodaj zadanie');
       expect(args['queryTodayLabel'], 'Na dzisiaj');
       expect(args['addTaskLongLabel'], 'Add a new task');
+      expect(args['publishTaskShortcuts'], isTrue);
+      expect(args['customShortcuts'], isEmpty);
+    });
+
+    test('sends custom shortcuts and the task-preset opt-out', () async {
+      await AssistantIntents.instance.updateShortcuts(
+        androidShortcuts: const AndroidShortcutsConfig(
+          publishTaskShortcuts: false,
+          customShortcuts: [
+            AndroidCustomShortcut(
+              id: 'coffee',
+              action: 'order_coffee',
+              shortLabel: 'Coffee',
+              longLabel: 'Order a coffee',
+            ),
+            AndroidCustomShortcut(
+              id: 'refresh',
+              action: 'refresh',
+              shortLabel: 'Refresh',
+            ),
+          ],
+        ),
+      );
+
+      final call =
+          outgoingCalls.singleWhere((c) => c.method == 'shortcuts.update');
+      final args = call.arguments as Map<Object?, Object?>;
+      expect(args['publishTaskShortcuts'], isFalse);
+      final custom = args['customShortcuts']! as List<Object?>;
+      expect(custom, hasLength(2));
+      final coffee = custom.first! as Map<Object?, Object?>;
+      expect(coffee['id'], 'coffee');
+      expect(coffee['action'], 'order_coffee');
+      expect(coffee['shortLabel'], 'Coffee');
+      expect(coffee['longLabel'], 'Order a coffee');
+      final refresh = custom.last! as Map<Object?, Object?>;
+      expect(refresh['longLabel'], 'Refresh', reason: 'falls back to short');
     });
 
     test('is a no-op when no platform implementation exists', () async {

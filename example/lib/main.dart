@@ -69,10 +69,37 @@ void main() {
             )
             .toList();
       },
+      // Generic action layer: backs custom iOS intents (see the
+      // RunnerAppIntentsPackage note in AppDelegate.swift) and the custom
+      // Android shortcut published below.
+      onAction: (request) async {
+        if (request.action == 'clear_completed') {
+          _tasks.removeWhere((t) => t.isCompleted);
+          return const AssistantTaskResult.success(
+            message: 'Cleared all completed tasks.',
+          );
+        }
+        return AssistantTaskResult.failure(
+          "I don't know the action '${request.action}'.",
+        );
+      },
     ),
   );
 
-  unawaited(AssistantIntents.instance.updateShortcuts());
+  unawaited(
+    AssistantIntents.instance.updateShortcuts(
+      androidShortcuts: const AndroidShortcutsConfig(
+        customShortcuts: [
+          AndroidCustomShortcut(
+            id: 'clear_completed',
+            action: 'clear_completed',
+            shortLabel: 'Clean up',
+            longLabel: 'Clear completed tasks',
+          ),
+        ],
+      ),
+    ),
+  );
 
   runApp(const ExampleApp());
 }

@@ -1,4 +1,4 @@
-package dev.erykkruk.flutter_assistant_intents
+package tech.ravenlab.flutter_assistant_intents
 
 import android.app.Activity
 import android.content.Context
@@ -13,12 +13,14 @@ import io.flutter.plugin.common.PluginRegistry
 /**
  * Android entry point.
  *
- * Android has no in-process voice-intent runtime comparable to iOS App
- * Intents that is broadly available yet (AppFunctions is beta and
- * Samsung-only until Android 17 — see [AppFunctionsIntegration]). The honest
- * MVP is dynamic app shortcuts: launcher long-press / Assistant-visible
- * shortcuts that launch the app with an action extra, which this plugin
- * routes into the same Dart handlers used by iOS.
+ * App Actions built-in intents (the closest Android analogue of iOS App
+ * Intents) are a legacy path Google stopped investing in after winding down
+ * Assistant features; their successor, AppFunctions, is still alpha and not
+ * broadly available (see [AppFunctionsIntegration]). The honest MVP is
+ * dynamic app shortcuts: launcher long-press shortcuts that launch the app
+ * with an action extra, which this plugin routes into the same Dart handlers
+ * used by iOS. Hosts that add `androidx.core:core-google-shortcuts` get the
+ * pushed shortcuts donated to Google surfaces automatically.
  */
 class FlutterAssistantIntentsPlugin :
     FlutterPlugin,
@@ -27,16 +29,20 @@ class FlutterAssistantIntentsPlugin :
     PluginRegistry.NewIntentListener {
 
     companion object {
-        private const val CHANNEL_NAME = "dev.erykkruk/flutter_assistant_intents"
+        private const val CHANNEL_NAME = "tech.ravenlab/flutter_assistant_intents"
 
-        const val EXTRA_ACTION = "dev.erykkruk.flutter_assistant_intents.action"
+        const val EXTRA_ACTION = "tech.ravenlab.flutter_assistant_intents.action"
         const val ACTION_ADD_TASK = "add_task"
         const val ACTION_QUERY_TODAY = "query_today"
+
+        /** Prefix marking an app-defined action id (generic action layer). */
+        const val CUSTOM_ACTION_PREFIX = "custom:"
 
         private const val METHOD_HANDLERS_REGISTERED = "handlers.registered"
         private const val METHOD_UPDATE_SHORTCUTS = "shortcuts.update"
         private const val METHOD_INTENT_ADD_TASK = "intent.addTask"
         private const val METHOD_INTENT_QUERY_TASKS = "intent.queryTasks"
+        private const val METHOD_INTENT_PERFORM_ACTION = "intent.performAction"
     }
 
     private var channel: MethodChannel? = null
@@ -134,17 +140,25 @@ class FlutterAssistantIntentsPlugin :
         val action = pendingAction ?: return
         val channel = channel ?: return
         pendingAction = null
-        when (action) {
+        when {
             // Shortcuts cannot carry free-form text, so the title is empty —
             // the Dart contract documents this as "open the add-task flow".
-            ACTION_ADD_TASK -> channel.invokeMethod(
+            action == ACTION_ADD_TASK -> channel.invokeMethod(
                 METHOD_INTENT_ADD_TASK,
                 mapOf("title" to ""),
             )
 
-            ACTION_QUERY_TODAY -> channel.invokeMethod(
+            action == ACTION_QUERY_TODAY -> channel.invokeMethod(
                 METHOD_INTENT_QUERY_TASKS,
                 mapOf("filter" to "today"),
+            )
+
+            action.startsWith(CUSTOM_ACTION_PREFIX) -> channel.invokeMethod(
+                METHOD_INTENT_PERFORM_ACTION,
+                mapOf(
+                    "action" to action.removePrefix(CUSTOM_ACTION_PREFIX),
+                    "parameters" to emptyMap<String, Any?>(),
+                ),
             )
         }
     }

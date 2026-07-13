@@ -1,0 +1,22 @@
+PODS:
+  - Flutter (1.0.0)
+  - flutter_assistant_intents (0.1.0):
+    - Flutter
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - flutter_assistant_intents (from `.symlinks/plugins/flutter_assistant_intents/ios`)
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  flutter_assistant_intents:
+    :path: ".symlinks/plugins/flutter_assistant_intents/ios"
+
+SPEC CHECKSUMS:
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_assistant_intents: c8bb5a0a13f7a392b8b997a1eb5e3ab72f65a18c
+
+PODFILE CHECKSUM: ccbcf804758026037ab59ea9e8d83fd1ca5ecce1
+
+COCOAPODS: 1.16.2

@@ -65,6 +65,82 @@ void main() {
     });
   });
 
+  group('AssistantActionRequest', () {
+    test('parses the action id and parameters', () {
+      final request = AssistantActionRequest.fromMap({
+        'action': 'order_coffee',
+        'parameters': {'size': 'large'},
+      });
+
+      expect(request.action, 'order_coffee');
+      expect(request.parameters, {'size': 'large'});
+    });
+
+    test('missing parameters decode as an empty map', () {
+      final request = AssistantActionRequest.fromMap({'action': 'refresh'});
+
+      expect(request.parameters, isEmpty);
+    });
+
+    test('rejects a missing or empty action id', () {
+      expect(
+        () => AssistantActionRequest.fromMap(<String, Object?>{}),
+        throwsA(isA<InvalidIntentPayloadException>()),
+      );
+      expect(
+        () => AssistantActionRequest.fromMap({'action': ''}),
+        throwsA(isA<InvalidIntentPayloadException>()),
+      );
+    });
+
+    test('rejects a non-map payload', () {
+      expect(
+        () => AssistantActionRequest.fromMap('nope'),
+        throwsA(isA<InvalidIntentPayloadException>()),
+      );
+    });
+  });
+
+  group('AndroidShortcutsConfig', () {
+    test('encodes defaults to the wire format', () {
+      const config = AndroidShortcutsConfig();
+
+      expect(config.toMap(), {
+        'addTaskLabel': 'Add task',
+        'addTaskLongLabel': 'Add a new task',
+        'customShortcuts': <Object?>[],
+        'publishTaskShortcuts': true,
+        'queryTodayLabel': 'Today',
+        'queryTodayLongLabel': "Show today's tasks",
+      });
+    });
+
+    test('custom shortcut longLabel falls back to shortLabel', () {
+      const shortcut = AndroidCustomShortcut(
+        id: 'x',
+        action: 'do_x',
+        shortLabel: 'X',
+      );
+
+      expect(shortcut.longLabel, 'X');
+      expect(shortcut.toMap(), {
+        'action': 'do_x',
+        'id': 'x',
+        'longLabel': 'X',
+        'shortLabel': 'X',
+      });
+    });
+  });
+
+  group('AssistantIntentHandlers', () {
+    test('asserts when no handler is provided', () {
+      expect(
+        () => AssistantIntentHandlers(),
+        throwsA(isA<AssertionError>()),
+      );
+    });
+  });
+
   group('AssistantTask', () {
     test('encodes to the wire format', () {
       final task = AssistantTask(

@@ -23,11 +23,12 @@ enum AssistantBridgeError: Error, LocalizedError {
     }
 }
 
-/// Decoded result of an add/complete handler call into Dart.
-struct AssistantResultPayload {
-    let success: Bool
-    let message: String?
-    let taskId: String?
+/// Decoded result of a Dart handler call. Public so host apps can declare
+/// their own custom `AppIntent`s that call `AssistantIntentBridge`.
+public struct AssistantResultPayload {
+    public let success: Bool
+    public let message: String?
+    public let taskId: String?
 
     init(from value: Any?) {
         let map = value as? [String: Any] ?? [:]
@@ -38,11 +39,11 @@ struct AssistantResultPayload {
 }
 
 /// Decoded task returned by the Dart query handler.
-struct AssistantTaskPayload {
-    let id: String
-    let title: String
-    let dueDate: Date?
-    let isCompleted: Bool
+public struct AssistantTaskPayload {
+    public let id: String
+    public let title: String
+    public let dueDate: Date?
+    public let isCompleted: Bool
 
     init?(from value: Any?) {
         guard let map = value as? [String: Any],
@@ -63,13 +64,18 @@ struct AssistantTaskPayload {
 /// Bridges App Intents (which run inside the app process) to the Dart
 /// handlers registered via `AssistantIntents.registerHandlers`.
 ///
+/// Public so host apps can declare their own custom `AppIntent`s (with
+/// their own Siri phrases) that call [performAction] — App Intents metadata
+/// is compiled statically, so the intent *types* must live in Swift, while
+/// all fulfillment logic stays in Dart.
+///
 /// Cold start: when Siri launches the app in the background to run an
-/// intent, the Flutter engine boots through the normal app launch path. The
-/// bridge waits up to `handlerTimeout` for Dart to register its handlers;
-/// past that, the intent fails with a friendly "open the app first" dialog.
-final class AssistantIntentBridge {
+/// intent, the bridge waits up to `handlerTimeout` for Dart to register its
+/// handlers; past that, the intent fails with a friendly "open the app
+/// first" dialog.
+public final class AssistantIntentBridge {
 
-    static let shared = AssistantIntentBridge()
+    public static let shared = AssistantIntentBridge()
 
     /// ISO-8601 with fractional seconds first, plain fallback — matches
     /// Dart's `DateTime.toIso8601String()` output.
@@ -81,9 +87,13 @@ final class AssistantIntentBridge {
 
     private static let handlerTimeout: TimeInterval = 5.0
     private static let pollInterval: UInt64 = 100_000_000 // 100 ms
+    /// Hard cap on a single Dart round-trip. A handler that never replies
+    /// (bug in the host app) must not hang the intent until the system
+    /// kills it — the assistant should get a spoken failure instead.
+    private static let dartReplyTimeout: TimeInterval = 10.0
 
     private let stateQueue = DispatchQueue(
-        label: "dev.erykkruk.flutter_assistant_intents.bridge"
+        label: "tech.ravenlab.flutter_assistant_intents.bridge"
     )
     private var channel: FlutterMethodChannel?
     private var handlersRegistered = false
@@ -104,7 +114,38 @@ final class AssistantIntentBridge {
 
     // MARK: - Intent entry points
 
-    func performAddTask(title: String, dueDate: Date?, notes: String?) async throws
+    /// Runs the app-defined action registered in Dart under [id].
+    ///
+    /// Use this from custom `AppIntent`s declared in the host's Runner
+    /// target — the intent supplies the Siri phrases/UI, Dart supplies the
+    /// logic:
+    ///
+    /// ```swift
+    /// public func perform() async throws -> some IntentResult & ProvidesDialog {
+    ///     let result = try await AssistantIntentBridge.shared.performAction(
+    ///         id: "order_coffee",
+    ///         parameters: ["size": size]
+    ///     )
+    ///     return .result(dialog: IntentDialog(
+    ///         stringLiteral: result.message ?? (result.success ? "Done." : "Sorry, that failed.")
+    ///     ))
+    /// }
+    /// ```
+    ///
+    /// `parameters` values must be method-channel-safe types (String, num,
+    /// Bool, lists/maps of those).
+    public func performAction(
+        id: String,
+        parameters: [String: Any] = [:]
+    ) async throws -> AssistantResultPayload {
+        let response = try await invokeDart(
+            method: "intent.performAction",
+            arguments: ["action": id, "parameters": parameters]
+        )
+        return AssistantResultPayload(from: response)
+    }
+
+    public func performAddTask(title: String, dueDate: Date?, notes: String?) async throws
         -> AssistantResultPayload
     {
         var arguments: [String: Any] = ["title": title]
@@ -118,7 +159,7 @@ final class AssistantIntentBridge {
         return AssistantResultPayload(from: response)
     }
 
-    func performCompleteTask(title: String) async throws -> AssistantResultPayload {
+    public func performCompleteTask(title: String) async throws -> AssistantResultPayload {
         let response = try await invokeDart(
             method: "intent.completeTask",
             arguments: ["title": title]
@@ -126,7 +167,7 @@ final class AssistantIntentBridge {
         return AssistantResultPayload(from: response)
     }
 
-    func performQueryTasks(filter: String) async throws -> [AssistantTaskPayload] {
+    public func performQueryTasks(filter: String) async throws -> [AssistantTaskPayload] {
         let response = try await invokeDart(
             method: "intent.queryTasks",
             arguments: ["filter": filter]
@@ -158,9 +199,11 @@ final class AssistantIntentBridge {
         else {
             throw AssistantBridgeError.appNotReady
         }
+        let once = ResumeOnce()
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.main.async {
                 channel.invokeMethod(method, arguments: arguments) { response in
+                    guard once.tryClaim() else { return }
                     if let error = response as? FlutterError {
                         continuation.resume(
                             throwing: AssistantBridgeError.dartError(
@@ -176,6 +219,25 @@ final class AssistantIntentBridge {
                     }
                 }
             }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.dartReplyTimeout) {
+                guard once.tryClaim() else { return }
+                continuation.resume(throwing: AssistantBridgeError.appNotReady)
+            }
         }
+    }
+}
+
+/// Guarantees a `CheckedContinuation` is resumed exactly once when both a
+/// reply callback and a timeout race for it.
+private final class ResumeOnce {
+    private let lock = NSLock()
+    private var claimed = false
+
+    func tryClaim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if claimed { return false }
+        claimed = true
+        return true
     }
 }

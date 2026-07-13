@@ -1,0 +1,125 @@
+# flutter_assistant_intents
+
+## Overview
+
+Flutter plugin eksponujący akcje aplikacji do asystentów głosowych: iOS App
+Intents (Siri, Spotlight, Shortcuts) + Android app shortcuts, z typowanym
+API handlerów w Darcie. Dwie warstwy: **task preset** (gotowe intenty
+Add/Complete/Query dla apek todo) i **generic action layer** (`onAction` —
+dowolna domena, custom intenty/shortcuty).
+
+## Tech Stack
+
+| Category | Technology | Version |
+|----------|-----------|---------|
+| Framework | Flutter | >= 3.10.0 |
+| Language | Dart | >= 3.0.0 |
+| iOS | Swift 5.9, App Intents framework | iOS 16.0+ |
+| Android | Kotlin 1.9, androidx.core (ShortcutManagerCompat) | minSdk 21 |
+| Linting | flutter_lints + strict analyzer | ^4.0.0 |
+| Testing | flutter_test (mocked method channel) | SDK |
+
+## Development Commands
+
+```bash
+flutter pub get          # Dependencies
+flutter analyze          # Static analysis (zero warnings)
+dart format .            # Format
+flutter test             # Tests (Dart layer)
+cd example && flutter build apk --debug      # Verify Kotlin compiles
+cd example && flutter build ios --no-codesign --debug   # Verify Swift + App Intents metadata
+```
+
+## Directory Structure
+
+```
+lib/
+├── flutter_assistant_intents.dart   # Barrel export (public API)
+└── src/
+    ├── assistant_intents.dart       # Singleton + method-channel dispatch
+    ├── handlers.dart                # AssistantIntentHandlers (task preset + onAction)
+    ├── exceptions.dart              # Typed exceptions
+    └── models/                      # Request/result/config models
+ios/Classes/
+├── FlutterAssistantIntentsPlugin.swift  # Channel registration
+├── AssistantIntentBridge.swift          # PUBLIC bridge: intents → Dart (timeouty!)
+└── AssistantAppIntents.swift            # Built-in AppIntents + AppShortcutsProvider + AppIntentsPackage
+android/src/main/kotlin/tech/ravenlab/flutter_assistant_intents/
+├── FlutterAssistantIntentsPlugin.kt     # Channel + shortcut-intent capture/dispatch
+├── ShortcutsPublisher.kt                # pushDynamicShortcut (NIGDY setDynamicShortcuts!)
+└── appfunctions/AppFunctionsIntegration.kt  # Stub (androidx.appfunctions = alpha)
+```
+
+## Architecture — kontrakt wire (method channel)
+
+Kanał: `tech.ravenlab/flutter_assistant_intents`. Metody:
+
+| Metoda | Kierunek | Payload |
+|---|---|---|
+| `handlers.registered` | Dart → native | — |
+| `shortcuts.update` | Dart → native | `AndroidShortcutsConfig.toMap()` |
+| `intent.addTask` | native → Dart | `{title, dueDate?, notes?}` |
+| `intent.completeTask` | native → Dart | `{title}` |
+| `intent.queryTasks` | native → Dart | `{filter: 'today'\|'all'}` → lista `AssistantTask.toMap()` |
+| `intent.performAction` | native → Dart | `{action, parameters}` → `AssistantTaskResult.toMap()` |
+
+**Każda zmiana nazwy metody/pola = zmiana w 3 miejscach (Dart, Swift,
+Kotlin) — grep po obu stronach przed edycją.** Android koduje custom akcje
+jako extra `EXTRA_ACTION` z prefiksem `custom:`.
+
+## Platform Constraints (NIE ŁAM)
+
+1. **iOS: typy App Intents są statyczne** — nie da się tworzyć intentów w
+   runtime z Darta. Custom intenty = szablon Swift w Runnerze hosta +
+   `AssistantIntentBridge.shared.performAction(id:)`. Nie obiecuj inaczej w
+   docs.
+2. **iOS cold start**: standardowy host Flutter nie bootuje silnika przy
+   background launch — intenty działają tylko gdy proces żyje. README musi
+   to uczciwie deklarować. Headless engine = roadmap.
+3. **iOS: frazy AppShortcut muszą zawierać `\(.applicationName)`**, max 10
+   App Shortcuts na apkę; `AppShortcut` wymaga `shortTitle` +
+   `systemImageName`.
+4. **Android: tylko `pushDynamicShortcut`** — `setDynamicShortcuts` kasuje
+   shortcuty hosta (naprawiony bug, nie przywracać).
+5. **Android: shortLabel ≤ ~10 znaków**; ikony = drawable z prefiksem
+   `flutter_assistant_intents_` (unikanie kolizji zasobów z hostem).
+6. **Bridge iOS ma dwa timeouty** (5 s rejestracja handlerów, 10 s odpowiedź
+   Darta) — każda nowa metoda natywna→Dart musi przechodzić przez
+   `invokeDart` (nigdy goły `invokeMethod` bez timeoutu).
+7. **`androidx.appfunctions` jest alpha** — nie wolno dodać zależności do
+   pluginu przed stable; wymaga KSP w apce hosta (udokumentowane w stubie).
+
+## Error Handling
+
+- Dart: handlery nie mogą rzucać — `_guardResult`/`_guardQuery` konwertują
+  wyjątki na speakable failure + `FlutterError.reportError`.
+- Publiczne wyjątki: `AssistantIntentsException` (baza),
+  `PlatformShortcutException`, `InvalidIntentPayloadException`.
+- Swift: `AssistantBridgeError` z `LocalizedError` — opis jest wypowiadany
+  przez Siri, musi być user-friendly.
+
+## Anti-patterns (NIGDY)
+
+1. `setDynamicShortcuts` na Androidzie (kasuje shortcuty hosta).
+2. Zmiana nazw metod/pól wire bez aktualizacji Dart+Swift+Kotlin+testów.
+3. Obietnica cold-start Siri w README bez headless engine.
+4. Edycja `example/ios/Runner.xcodeproj` ręcznie poza deployment targetem.
+5. Nowa zależność runtime w pubspec (plugin ma zero poza Flutter SDK).
+6. `print()` / `NSLog` / `Log.d` w kodzie produkcyjnym pluginu.
+
+## Release
+
+Standard workspace: push do `main` → `release.yml` (auto-bump PATCH jeśli
+wersja ma już tag, commit `chore(release)`, tag przez `RELEASE_DEPLOY_KEY`)
+→ `publish.yml` (OIDC pub.dev). Pierwsza publikacja na pub.dev musi być
+ręczna (`dart pub publish`), potem włącz automated publishing w admin
+ustawieniach pakietu na pub.dev (GitHub Actions, repo
+`erykkruk/flutter_assistant_intents`, tag pattern `v{{version}}`).
+
+## Roadmap (osobne milestone'y — nie zaczynaj bez decyzji Eryka)
+
+- iOS: `AppEntity` + `EntityQuery` dla tasków (dezambiguacja Siri).
+- iOS: schematy Apple Intelligence (`@AssistantIntent`, domena todo-list).
+- iOS: headless FlutterEngine dla cold startu.
+- iOS: Spotlight `IndexedEntity`.
+- Android: AppFunctions gdy wyjdzie ze stanu alpha.

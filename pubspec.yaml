@@ -32,7 +32,7 @@ flutter:
   plugin:
     platforms:
       android:
-        package: dev.erykkruk.flutter_assistant_intents
+        package: tech.ravenlab.flutter_assistant_intents
         pluginClass: FlutterAssistantIntentsPlugin
       ios:
         pluginClass: FlutterAssistantIntentsPlugin

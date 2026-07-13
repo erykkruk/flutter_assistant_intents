@@ -28,9 +28,13 @@ public struct AddTaskIntent: AppIntent {
     @Parameter(title: "Due date")
     public var dueDate: Date?
 
+    @Parameter(title: "Notes")
+    public var notes: String?
+
     public static var parameterSummary: some ParameterSummary {
         Summary("Add \(\.$taskTitle)") {
             \.$dueDate
+            \.$notes
         }
     }
 
@@ -40,7 +44,7 @@ public struct AddTaskIntent: AppIntent {
         let payload = try await AssistantIntentBridge.shared.performAddTask(
             title: taskTitle,
             dueDate: dueDate,
-            notes: nil
+            notes: notes
         )
         let fallback = payload.success
             ? "Done. Task added."
@@ -160,7 +164,9 @@ public struct AssistantShortcuts: AppShortcutsProvider {
                 "Add a task to \(.applicationName)",
                 "Create a task in \(.applicationName)",
                 "New task in \(.applicationName)",
-            ]
+            ],
+            shortTitle: "Add Task",
+            systemImageName: "plus.circle"
         )
         AppShortcut(
             intent: CompleteTaskIntent(),
@@ -168,7 +174,9 @@ public struct AssistantShortcuts: AppShortcutsProvider {
                 "Complete a task in \(.applicationName)",
                 "Finish a task in \(.applicationName)",
                 "Mark a task done in \(.applicationName)",
-            ]
+            ],
+            shortTitle: "Complete Task",
+            systemImageName: "checkmark.circle"
         )
         AppShortcut(
             intent: QueryTasksIntent(),
@@ -176,7 +184,9 @@ public struct AssistantShortcuts: AppShortcutsProvider {
                 "What are my tasks in \(.applicationName)",
                 "Show my \(.applicationName) tasks",
                 "What's on my \(.applicationName) list today",
-            ]
+            ],
+            shortTitle: "Show Tasks",
+            systemImageName: "list.bullet.circle"
         )
     }
 }
@@ -187,14 +197,14 @@ public struct AssistantShortcuts: AppShortcutsProvider {
 ///
 /// App Intents metadata is extracted from the **app target** at build time.
 /// Intents living in a library are only discovered when the host app
-/// declares an `AppIntentsPackage` that includes this one (Xcode 15+,
-/// runtime iOS 16.4+):
+/// declares an `AppIntentsPackage` that includes this one (current SDKs
+/// mark the protocol iOS 17.0+):
 ///
 /// ```swift
 /// // in Runner (AppDelegate.swift or a dedicated file)
 /// import flutter_assistant_intents
 ///
-/// @available(iOS 16.4, *)
+/// @available(iOS 17.0, *)
 /// struct RunnerAppIntentsPackage: AppIntentsPackage {
 ///     static var includedPackages: [any AppIntentsPackage.Type] {
 ///         [FlutterAssistantIntentsPackage.self]
@@ -202,8 +212,8 @@ public struct AssistantShortcuts: AppShortcutsProvider {
 /// }
 /// ```
 ///
-/// Hosts that must support iOS 16.0–16.3 should instead declare thin
-/// wrapper intents in the Runner target itself (see README).
-@available(iOS 16.4, *)
+/// Hosts that must support iOS 16.x should instead declare thin wrapper
+/// intents in the Runner target itself (see README).
+@available(iOS 17.0, *)
 public struct FlutterAssistantIntentsPackage: AppIntentsPackage {}
 #endif

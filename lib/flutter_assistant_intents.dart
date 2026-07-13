@@ -1,6 +1,7 @@
-/// Expose task-app actions to voice assistants — iOS App Intents (Siri,
+/// Expose app actions to voice assistants — iOS App Intents (Siri,
 /// Spotlight, Shortcuts) and Android app shortcuts — with typed Dart
-/// handlers.
+/// handlers: a ready-made task preset plus a generic action layer for any
+/// app domain.
 ///
 /// See [AssistantIntents] for the entry point.
 library flutter_assistant_intents;
@@ -14,11 +15,14 @@ export 'src/exceptions.dart'
 export 'src/handlers.dart'
     show
         AddTaskHandler,
+        AssistantActionHandler,
         AssistantIntentHandlers,
         CompleteTaskHandler,
         QueryTasksHandler;
 export 'src/models/add_task_request.dart' show AddTaskRequest;
-export 'src/models/android_shortcuts_config.dart' show AndroidShortcutsConfig;
+export 'src/models/android_shortcuts_config.dart'
+    show AndroidCustomShortcut, AndroidShortcutsConfig;
+export 'src/models/assistant_action_request.dart' show AssistantActionRequest;
 export 'src/models/assistant_task.dart' show AssistantTask;
 export 'src/models/assistant_task_result.dart' show AssistantTaskResult;
 export 'src/models/complete_task_request.dart' show CompleteTaskRequest;

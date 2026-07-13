@@ -1,22 +1,43 @@
 # flutter_assistant_intents
 
-Expose task-app actions to voice assistants from any Flutter task/todo app —
-**iOS App Intents** (Siri, Spotlight, the Shortcuts app) and **Android app
-shortcuts** — through one typed Dart handler API. Product-agnostic: no app
-names are baked in; iOS phrases use the application-name token and Android
-labels are passed in (and localizable) from Dart.
+Expose app actions to voice assistants — **iOS App Intents** (Siri,
+Spotlight, the Shortcuts app) and **Android app shortcuts** — through one
+typed Dart handler API.
+
+Two layers, mix freely:
+
+- **Task preset** (batteries included): `onAddTask` / `onCompleteTask` /
+  `onQueryTasks` back ready-made Siri intents and launcher shortcuts for
+  task/todo apps. Product-agnostic — iOS phrases use the application-name
+  token, Android labels are passed in (and localizable) from Dart.
+- **Generic action layer** (any app domain): register `onAction` in Dart and
+  route *your own* intents to it — custom iOS `AppIntent`s with your own Siri
+  phrases (one small Swift declaration each, template below) and fully
+  Dart-defined custom Android shortcuts.
+
+> **Why the Swift declaration?** App Intents metadata is compiled statically
+> — Siri discovers intent *types* and phrases at build time, so no plugin can
+> create new intent types at runtime from Dart. This is an Apple platform
+> constraint, not a library choice. The split this plugin makes is: intent
+> *type + phrases* in Swift (a few lines, no logic), all *fulfillment logic,
+> parameters and results* in Dart. On Android, custom shortcuts are 100%
+> Dart-defined.
 
 ## Support matrix
 
 | Capability | iOS | Android |
 |---|---|---|
-| Voice: "Add a task in `<app>`" (with spoken title + due date) | ✅ App Intents, iOS 16+ | ❌ (AppFunctions later, see below) |
-| Voice: "Complete a task in `<app>`" | ✅ App Intents | ❌ |
-| Voice: "What are my tasks in `<app>`" (assistant speaks the list) | ✅ App Intents | ❌ |
+| Voice: "Add a task in `<app>`" (spoken title + due date + notes) | ✅ App Intents, iOS 16+ ¹ | ❌ (AppFunctions later, see below) |
+| Voice: "Complete a task in `<app>`" | ✅ ¹ | ❌ |
+| Voice: "What are my tasks in `<app>`" (assistant speaks the list) | ✅ ¹ | ❌ |
+| Custom app-defined actions (any domain) | ✅ custom intent in Runner → `onAction` ¹ | ✅ custom shortcut → `onAction` |
 | Shortcuts app / automations | ✅ | — |
-| Spotlight / zero-setup phrase suggestions | ✅ (`AppShortcutsProvider`) | — |
-| Launcher shortcuts: "Add task", "Today's tasks" (launch into the app) | — | ✅ `ShortcutManagerCompat` dynamic shortcuts |
-| AppFunctions (Gemini-invokable in-app functions) | — | 🚧 planned — `androidx.appfunctions` is beta and Samsung-only before Android 17; a clearly marked stub (`appfunctions/AppFunctionsIntegration.kt`) documents the wiring |
+| Siri phrase suggestions (`AppShortcutsProvider`) | ✅ | — |
+| Launcher shortcuts (launch into the app) | — | ✅ `ShortcutManagerCompat.pushDynamicShortcut` |
+| AppFunctions (assistant-invokable in-app functions) | — | 🚧 planned — `androidx.appfunctions` is **alpha**; a clearly marked stub (`appfunctions/AppFunctionsIntegration.kt`) documents the wiring and its host-app KSP requirement |
+
+¹ **Requires the app process to be alive** (foreground or suspended in the
+background). See [Cold start limitation](#cold-start-limitation).
 
 SiriKit custom intents are deliberately not used — App Intents is the modern
 replacement (SiriKit intents are deprecated as of iOS 26).
@@ -67,7 +88,7 @@ void main() {
 }
 ```
 
-Rules of thumb:
+All handlers are optional (register at least one). Rules of thumb:
 
 - Handlers should **never throw** — return `AssistantTaskResult.failure('…')`
   with a short, speakable sentence. Thrown errors are converted into a
@@ -77,6 +98,82 @@ Rules of thumb:
 - `result.message` is spoken by Siri verbatim — keep it short and free of
   technical detail.
 
+## Generic actions — expose any app domain
+
+Register a single `onAction` handler and dispatch on your own action ids:
+
+```dart
+AssistantIntents.instance.registerHandlers(
+  AssistantIntentHandlers(
+    onAction: (request) async => switch (request.action) {
+      'order_coffee' => await _orderCoffee(request.parameters['size'] as String?),
+      'clear_completed' => await _clearCompleted(),
+      _ => const AssistantTaskResult.failure('Unknown action.'),
+    },
+  ),
+);
+```
+
+**Android** — publish custom shortcuts entirely from Dart:
+
+```dart
+await AssistantIntents.instance.updateShortcuts(
+  androidShortcuts: const AndroidShortcutsConfig(
+    publishTaskShortcuts: false, // skip the task preset if you don't need it
+    customShortcuts: [
+      AndroidCustomShortcut(
+        id: 'coffee',
+        action: 'order_coffee',
+        shortLabel: 'Coffee',
+        longLabel: 'Order a coffee',
+      ),
+    ],
+  ),
+);
+```
+
+**iOS** — declare one small intent per action in your Runner target (this is
+where the Siri phrases live; the logic stays in Dart):
+
+```swift
+import AppIntents
+import flutter_assistant_intents
+
+@available(iOS 16.0, *)
+struct OrderCoffeeIntent: AppIntent {
+    static var title: LocalizedStringResource = "Order Coffee"
+    static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "Size")
+    var size: String?
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let result = try await AssistantIntentBridge.shared.performAction(
+            id: "order_coffee",
+            parameters: ["size": size as Any]
+        )
+        return .result(dialog: IntentDialog(
+            stringLiteral: result.message ?? (result.success ? "Done." : "Sorry, that failed.")
+        ))
+    }
+}
+
+@available(iOS 16.0, *)
+struct MyAppShortcuts: AppShortcutsProvider {
+    static var appShortcuts: [AppShortcut] {
+        AppShortcut(
+            intent: OrderCoffeeIntent(),
+            phrases: ["Order a coffee in \(.applicationName)"],
+            shortTitle: "Order Coffee",
+            systemImageName: "cup.and.saucer"
+        )
+    }
+}
+```
+
+See [`example/ios/Runner/AppDelegate.swift`](example/ios/Runner/AppDelegate.swift)
+for a complete, working declaration.
+
 ## iOS setup (host app)
 
 The plugin requires **iOS 16.0+** (set `platform :ios, '16.0'` in your
@@ -84,14 +181,14 @@ Podfile and the Runner deployment target).
 
 App Intents metadata is extracted from the **app target** at build time.
 Intents defined inside this plugin (a library) are only discovered when the
-host app re-exports them through an `AppIntentsPackage` (Xcode 15+, runtime
-iOS 16.4+). Add this once to your Runner target:
+host app re-exports them through an `AppIntentsPackage` (current SDKs mark
+the protocol iOS 17.0+). Add this once to your Runner target:
 
 ```swift
 import AppIntents
 import flutter_assistant_intents
 
-@available(iOS 16.4, *)
+@available(iOS 17.0, *)
 struct RunnerAppIntentsPackage: AppIntentsPackage {
     static var includedPackages: [any AppIntentsPackage.Type] {
         [FlutterAssistantIntentsPackage.self]
@@ -99,23 +196,35 @@ struct RunnerAppIntentsPackage: AppIntentsPackage {
 }
 ```
 
-> **iOS 16.0–16.3 caveat:** package-provided intents require iOS 16.4. If you
-> must support 16.0–16.3, declare thin wrapper intents in the Runner target
-> that call the plugin's public `AssistantIntentBridge` — the wrappers live in
-> the app target, so metadata extraction sees them on any iOS 16 device.
+> **iOS 16.x caveat:** the `AppIntentsPackage` re-export requires iOS 17.
+> To surface the built-in intents on iOS 16 devices, declare thin wrapper
+> intents in the Runner target that call the plugin's public
+> `AssistantIntentBridge` — the wrappers live in the app target, so metadata
+> extraction sees them on any iOS 16 device.
+
+> **`use_frameworks!` / release-build caveat:** metadata extraction from
+> intents living in an embedded framework has known gaps in some
+> release/TestFlight configurations. If the built-in intents don't appear in
+> the Shortcuts app of a release build, declare thin wrapper intents in the
+> Runner (same pattern as above) — wrappers in the app target are always
+> extracted. Custom intents you declare via the generic action layer live in
+> the Runner already and are unaffected.
 
 ### Cold start limitation
 
-Intents run in the app process (`openAppWhenRun = false`). If the app is not
-running, iOS launches it in the background and the plugin waits **up to 5
-seconds** for your Dart code to call `registerHandlers`. If your bootstrap
-takes longer (or registration is gated behind UI), the assistant answers
-with *"Please open the app first, then try again."*
+Intents run in the app process (`openAppWhenRun = false`) and are fulfilled
+by your Dart handlers, so **the Flutter engine must be running**: the intents
+work while the app is in the foreground or suspended in the background. When
+the process is not running at all, a standard Flutter app does not boot its
+Dart code on a background launch, so the assistant answers with *"Please open
+the app first, then try again."* (the plugin waits up to 5 seconds for
+`registerHandlers`, and a further 10 seconds for each handler reply, before
+giving that answer — it never hangs Siri).
 
-The code is structured so a headless background engine (registering handlers
-without full app bootstrap) can be added later without breaking the API —
-today the pragmatic requirement is: **register handlers as early as possible
-in `main()`**.
+A headless background engine (registering handlers without full app
+bootstrap) is on the roadmap and can be added without breaking the API.
+Until then: **register handlers as early as possible in `main()`** so
+warm/background launches always succeed.
 
 ## Android setup (host app)
 
@@ -126,18 +235,31 @@ No manifest changes are required for dynamic shortcuts. Call
 await AssistantIntents.instance.updateShortcuts(
   androidShortcuts: const AndroidShortcutsConfig(
     addTaskLabel: 'Add task',
-    queryTodayLabel: "Today's tasks",
+    queryTodayLabel: 'Today',
   ),
 );
 ```
+
+Notes:
+
+- Shortcuts are published with `pushDynamicShortcut` (additive) — the plugin
+  **never touches shortcuts your app publishes itself**.
+- Keep short labels under ~10 characters; launchers truncate longer ones.
+- Labels are supplied from Dart, so **re-call `updateShortcuts()` after a
+  locale change** to re-publish translated labels.
+- To surface the shortcuts on Google surfaces (Assistant/Gemini "shortcuts"
+  suggestions), add `androidx.core:core-google-shortcuts` to your app —
+  donation then happens automatically for pushed shortcuts. The plugin does
+  not impose that dependency.
 
 Tapping a shortcut launches (or resumes) the app with an intent extra that
 the plugin converts into the same Dart handler calls:
 
 - **Add task** → `onAddTask` with an **empty title** (shortcuts cannot carry
   free-form text) — treat it as "open the add-task flow".
-- **Today's tasks** → `onQueryTasks` with `TaskQueryFilter.today` — navigate
-  to your today view.
+- **Today** → `onQueryTasks` with `TaskQueryFilter.today` — navigate to your
+  today view.
+- **Custom shortcut** → `onAction` with the shortcut's `action` id.
 
 If your `MainActivity` overrides `onNewIntent`, keep calling
 `super.onNewIntent(intent)` so plugin listeners receive it (the default
@@ -148,17 +270,20 @@ If your `MainActivity` overrides `onNewIntent`, keep calling
 | Symbol | Purpose |
 |---|---|
 | `AssistantIntents.instance` | Entry point (singleton) |
-| `registerHandlers(AssistantIntentHandlers)` | Wire your app's task logic |
+| `registerHandlers(AssistantIntentHandlers)` | Wire your app's logic (all handlers optional, min. one) |
 | `updateShortcuts({AndroidShortcutsConfig})` | Refresh platform shortcut donations (no-op-safe everywhere) |
 | `AddTaskRequest` | `title`, `dueDate?`, `notes?` |
 | `CompleteTaskRequest` | `title` (resolve fuzzily in your app) |
 | `QueryTasksRequest` | `filter` (`TaskQueryFilter.today` / `.all`) |
+| `AssistantActionRequest` | `action` id + `parameters` map (generic layer) |
 | `AssistantTask` | `id`, `title`, `dueDate?`, `isCompleted` |
 | `AssistantTaskResult` | `.success(message:, taskId:)` / `.failure(message)` |
+| `AndroidShortcutsConfig` / `AndroidCustomShortcut` | Android shortcut labels + custom shortcuts |
 
 ## Example
 
-See [`example/`](example/lib/main.dart) for a minimal in-memory app.
+See [`example/`](example/lib/main.dart) for a runnable app using both the
+task preset and the generic action layer.
 
 ## License
 

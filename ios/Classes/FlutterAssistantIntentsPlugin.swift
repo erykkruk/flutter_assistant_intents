@@ -3,7 +3,7 @@ import UIKit
 
 public class FlutterAssistantIntentsPlugin: NSObject, FlutterPlugin {
 
-    private static let channelName = "dev.erykkruk/flutter_assistant_intents"
+    private static let channelName = "tech.ravenlab/flutter_assistant_intents"
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(

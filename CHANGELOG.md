@@ -5,20 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2026-07-11
+## [0.1.0] - 2026-07-13
 
 ### Added
 
 - Typed Dart handler API: `AssistantIntents.instance.registerHandlers(...)`
-  with `onAddTask`, `onCompleteTask` and `onQueryTasks` callbacks.
+  with optional `onAddTask`, `onCompleteTask`, `onQueryTasks` callbacks
+  (task preset) and a generic `onAction` callback for app-defined actions.
 - Typed models: `AddTaskRequest`, `CompleteTaskRequest`, `QueryTasksRequest`,
-  `AssistantTask`, `AssistantTaskResult`, `TaskQueryFilter`.
-- iOS (16+): App Intents implementation — `AddTaskIntent`,
-  `CompleteTaskIntent`, `QueryTasksIntent`, an `AppShortcutsProvider` with
-  app-name-based invocation phrases, and `FlutterAssistantIntentsPackage`
-  (`AppIntentsPackage`) for host re-export.
-- Android: dynamic app shortcuts ("Add task", "Show today's tasks") via
-  `ShortcutManagerCompat`, routed back into the same Dart handlers on launch.
+  `AssistantActionRequest`, `AssistantTask`, `AssistantTaskResult`,
+  `TaskQueryFilter`, `AndroidShortcutsConfig`, `AndroidCustomShortcut`.
+- iOS (16+): App Intents implementation — `AddTaskIntent` (title, due date,
+  notes), `CompleteTaskIntent`, `QueryTasksIntent`, an `AppShortcutsProvider`
+  with app-name-based invocation phrases (short titles + SF Symbols), and
+  `FlutterAssistantIntentsPackage` (`AppIntentsPackage`) for host re-export.
+- iOS: public `AssistantIntentBridge.performAction(id:parameters:)` so host
+  apps can declare custom intents with their own Siri phrases whose logic
+  lives in Dart; hard 10 s timeout on every Dart round-trip so a silent
+  handler can never hang Siri.
+- Android: dynamic app shortcuts ("Add task", "Today") published additively
+  via `ShortcutManagerCompat.pushDynamicShortcut` (host shortcuts are never
+  replaced), with icons and ranks; fully Dart-defined custom shortcuts
+  routed to `onAction`.
 - `updateShortcuts()` — no-op-safe refresh of platform shortcut donations
-  with configurable Android shortcut labels.
+  with configurable Android labels, task-preset opt-out and custom
+  shortcuts.
+- Runnable `example/` app (Android + iOS hosts) demonstrating the task
+  preset, the generic action layer and the required iOS
+  `AppIntentsPackage` re-export.
 - Dart-layer tests with a mocked method channel.

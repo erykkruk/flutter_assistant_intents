@@ -7,6 +7,7 @@ import 'exceptions.dart';
 import 'handlers.dart';
 import 'models/add_task_request.dart';
 import 'models/android_shortcuts_config.dart';
+import 'models/assistant_action_request.dart';
 import 'models/assistant_task.dart';
 import 'models/assistant_task_result.dart';
 import 'models/complete_task_request.dart';
@@ -38,18 +39,21 @@ class AssistantIntents {
   static final AssistantIntents instance = AssistantIntents._();
 
   /// Name of the method channel shared with the native implementations.
-  static const String channelName = 'dev.erykkruk/flutter_assistant_intents';
+  static const String channelName = 'tech.ravenlab/flutter_assistant_intents';
 
   static const MethodChannel _channel = MethodChannel(channelName);
 
   static const String _methodAddTask = 'intent.addTask';
   static const String _methodCompleteTask = 'intent.completeTask';
   static const String _methodQueryTasks = 'intent.queryTasks';
+  static const String _methodPerformAction = 'intent.performAction';
   static const String _methodHandlersRegistered = 'handlers.registered';
   static const String _methodUpdateShortcuts = 'shortcuts.update';
 
   static const String _genericFailureMessage =
       'Something went wrong. Please try again in the app.';
+  static const String _unsupportedActionMessage =
+      "This action isn't available in this app.";
 
   AssistantIntentHandlers? _handlers;
 
@@ -91,23 +95,36 @@ class AssistantIntents {
     }
     switch (call.method) {
       case _methodAddTask:
+        final onAddTask = handlers.onAddTask;
+        if (onAddTask == null) return _unsupportedActionResult();
         return _guardResult(
-          () => handlers.onAddTask(AddTaskRequest.fromMap(call.arguments)),
+          () => onAddTask(AddTaskRequest.fromMap(call.arguments)),
         );
       case _methodCompleteTask:
+        final onCompleteTask = handlers.onCompleteTask;
+        if (onCompleteTask == null) return _unsupportedActionResult();
         return _guardResult(
-          () => handlers
-              .onCompleteTask(CompleteTaskRequest.fromMap(call.arguments)),
+          () => onCompleteTask(CompleteTaskRequest.fromMap(call.arguments)),
         );
       case _methodQueryTasks:
+        final onQueryTasks = handlers.onQueryTasks;
+        if (onQueryTasks == null) return const <Map<String, Object?>>[];
         return _guardQuery(
-          () =>
-              handlers.onQueryTasks(QueryTasksRequest.fromMap(call.arguments)),
+          () => onQueryTasks(QueryTasksRequest.fromMap(call.arguments)),
+        );
+      case _methodPerformAction:
+        final onAction = handlers.onAction;
+        if (onAction == null) return _unsupportedActionResult();
+        return _guardResult(
+          () => onAction(AssistantActionRequest.fromMap(call.arguments)),
         );
       default:
         throw MissingPluginException('Unknown method ${call.method}');
     }
   }
+
+  Map<String, Object?> _unsupportedActionResult() =>
+      const AssistantTaskResult.failure(_unsupportedActionMessage).toMap();
 
   /// Runs an add/complete handler and converts any thrown error into a
   /// generic speakable failure — the assistant must always get an answer.
