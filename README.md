@@ -46,7 +46,7 @@ replacement (SiriKit intents are deprecated as of iOS 26).
 
 ```yaml
 dependencies:
-  flutter_assistant_intents: ^0.1.0
+  flutter_assistant_intents: ^1.0.0
 ```
 
 Register handlers early in startup (they must be in place before an intent

@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'flutter_assistant_intents'
-  s.version          = '0.1.0'
+  s.version          = '1.0.0'
   s.summary          = 'Voice-assistant task actions for Flutter apps — iOS App Intents + Android shortcuts.'
   s.description      = <<-DESC
 Expose task-app actions to voice assistants. On iOS this plugin ships App Intents

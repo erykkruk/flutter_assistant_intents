@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-07-13
+
+First stable release — API considered stable from here on (SemVer).
+
+### Changed
+
+- Promoted 0.1.0 to stable with no API changes: task preset
+  (`onAddTask` / `onCompleteTask` / `onQueryTasks`) + generic action layer
+  (`onAction`, custom iOS intents via `AssistantIntentBridge.performAction`,
+  Dart-defined custom Android shortcuts).
+
 ## [0.1.0] - 2026-07-13
 
 ### Added

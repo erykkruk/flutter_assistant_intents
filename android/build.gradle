@@ -1,5 +1,5 @@
 group 'tech.ravenlab.flutter_assistant_intents'
-version '0.1.0'
+version '1.0.0'
 
 buildscript {
     ext.kotlin_version = '1.9.0'
