@@ -23,3 +23,6 @@ example/android/.gradle/
 # Android plugin build
 android/.gradle/
 android/build/
+
+# SPM build artifacts
+ios/flutter_assistant_intents/.build/

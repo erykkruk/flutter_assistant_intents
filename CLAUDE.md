@@ -40,10 +40,14 @@ lib/
     ├── handlers.dart                # AssistantIntentHandlers (task preset + onAction)
     ├── exceptions.dart              # Typed exceptions
     └── models/                      # Request/result/config models
-ios/Classes/
-├── FlutterAssistantIntentsPlugin.swift  # Channel registration
-├── AssistantIntentBridge.swift          # PUBLIC bridge: intents → Dart (timeouty!)
-└── AssistantAppIntents.swift            # Built-in AppIntents + AppShortcutsProvider + AppIntentsPackage
+ios/
+├── flutter_assistant_intents.podspec    # CocoaPods (source_files → ścieżka SPM)
+└── flutter_assistant_intents/           # Swift Package Manager layout (dual support)
+    ├── Package.swift
+    └── Sources/flutter_assistant_intents/
+        ├── FlutterAssistantIntentsPlugin.swift  # Channel registration + headless boot API
+        ├── AssistantIntentBridge.swift          # PUBLIC bridge: intents → Dart (timeouty!)
+        └── AssistantAppIntents.swift            # Built-in AppIntents + AppShortcutsProvider + AppIntentsPackage
 android/src/main/kotlin/tech/ravenlab/flutter_assistant_intents/
 ├── FlutterAssistantIntentsPlugin.kt     # Channel + shortcut-intent capture/dispatch
 ├── ShortcutsPublisher.kt                # pushDynamicShortcut (NIGDY setDynamicShortcuts!)
