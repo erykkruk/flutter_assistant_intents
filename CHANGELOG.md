@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-13
+
+### Added
+
+- **iOS cold-start support**: the plugin can boot a headless `FlutterEngine`
+  when Siri runs an intent while the app process is not alive. Enable with
+  `FlutterAssistantIntentsPlugin.setPluginRegistrantCallback` (optionally
+  with a dedicated Dart `entrypoint`); a `handlers.sync` handshake removes
+  the engine-boot race.
+
 ## [1.0.0] - 2026-07-13
 
 First stable release — API considered stable from here on (SemVer).

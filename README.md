@@ -36,8 +36,10 @@ Two layers, mix freely:
 | Launcher shortcuts (launch into the app) | — | ✅ `ShortcutManagerCompat.pushDynamicShortcut` |
 | AppFunctions (assistant-invokable in-app functions) | — | 🚧 planned — `androidx.appfunctions` is **alpha**; a clearly marked stub (`appfunctions/AppFunctionsIntegration.kt`) documents the wiring and its host-app KSP requirement |
 
-¹ **Requires the app process to be alive** (foreground or suspended in the
-background). See [Cold start limitation](#cold-start-limitation).
+¹ Works even from a **cold start** (app process not running) once the
+one-line headless-engine callback is configured — see
+[Cold start](#cold-start). Without it, intents require the app process to be
+alive (foreground or suspended).
 
 SiriKit custom intents are deliberately not used — App Intents is the modern
 replacement (SiriKit intents are deprecated as of iOS 26).
@@ -210,21 +212,43 @@ struct RunnerAppIntentsPackage: AppIntentsPackage {
 > extracted. Custom intents you declare via the generic action layer live in
 > the Runner already and are unaffected.
 
-### Cold start limitation
+### Cold start
 
 Intents run in the app process (`openAppWhenRun = false`) and are fulfilled
-by your Dart handlers, so **the Flutter engine must be running**: the intents
-work while the app is in the foreground or suspended in the background. When
-the process is not running at all, a standard Flutter app does not boot its
-Dart code on a background launch, so the assistant answers with *"Please open
-the app first, then try again."* (the plugin waits up to 5 seconds for
-`registerHandlers`, and a further 10 seconds for each handler reply, before
-giving that answer — it never hangs Siri).
+by your Dart handlers, so the Flutter engine must be running. When Siri runs
+an intent while the process is cold, the plugin can **boot a headless
+Flutter engine** — enable it with one call in
+`application(_:didFinishLaunchingWithOptions:)`:
 
-A headless background engine (registering handlers without full app
-bootstrap) is on the roadmap and can be added without breaking the API.
-Until then: **register handlers as early as possible in `main()`** so
-warm/background launches always succeed.
+```swift
+FlutterAssistantIntentsPlugin.setPluginRegistrantCallback { engine in
+    GeneratedPluginRegistrant.register(with: engine)
+}
+```
+
+By default the headless engine runs your `main()`. If your `main()` does
+work that is unsafe without UI (or you want a faster boot), point it at a
+dedicated entrypoint that only registers the handlers:
+
+```swift
+FlutterAssistantIntentsPlugin.setPluginRegistrantCallback(entrypoint: "assistantMain") { engine in
+    GeneratedPluginRegistrant.register(with: engine)
+}
+```
+
+```dart
+@pragma('vm:entry-point')
+void assistantMain() {
+  WidgetsFlutterBinding.ensureInitialized();
+  registerMyAssistantHandlers(); // same registration main() uses
+}
+```
+
+Without the callback, cold-start intents answer *"Please open the app first,
+then try again."* (the plugin waits up to 5 seconds for `registerHandlers`
+and a further 10 seconds for each handler reply — it never hangs Siri).
+Either way: **register handlers as early as possible** so warm/background
+launches always succeed.
 
 ## Android setup (host app)
 

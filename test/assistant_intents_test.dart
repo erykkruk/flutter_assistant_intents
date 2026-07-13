@@ -64,6 +64,14 @@ void main() {
         contains('handlers.registered'),
       );
     });
+
+    test('answers the native handlers.sync handshake with true', () async {
+      AssistantIntents.instance.registerHandlers(handlers());
+
+      final response = await invokeFromNative('handlers.sync', null);
+
+      expect(response, isTrue);
+    });
   });
 
   group('intent.addTask', () {

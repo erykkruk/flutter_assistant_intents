@@ -98,6 +98,11 @@ public final class AssistantIntentBridge {
     private var channel: FlutterMethodChannel?
     private var handlersRegistered = false
 
+    private var headlessEntrypoint = "main"
+    private var registrant: ((FlutterEngine) -> Void)?
+    private var headlessEngine: FlutterEngine?
+    private var headlessBootAttempted = false
+
     private init() {}
 
     func attach(channel: FlutterMethodChannel) {
@@ -110,6 +115,43 @@ public final class AssistantIntentBridge {
 
     func markHandlersRegistered() {
         stateQueue.sync { self.handlersRegistered = true }
+    }
+
+    func configureHeadlessBoot(
+        entrypoint: String,
+        registrant: @escaping (FlutterEngine) -> Void
+    ) {
+        stateQueue.sync {
+            self.headlessEntrypoint = entrypoint
+            self.registrant = registrant
+        }
+    }
+
+    /// Boots a headless Flutter engine when an intent arrives in a process
+    /// with no engine (cold start). Requires the host to have called
+    /// `FlutterAssistantIntentsPlugin.setPluginRegistrantCallback`; a no-op
+    /// otherwise, and attempted at most once per process.
+    private func bootHeadlessEngineIfNeeded() async {
+        let boot: ((FlutterEngine) -> Void)? = stateQueue.sync {
+            guard channel == nil,
+                  !headlessBootAttempted,
+                  let registrant = registrant
+            else { return nil }
+            headlessBootAttempted = true
+            return registrant
+        }
+        guard let boot = boot else { return }
+        let entrypoint = stateQueue.sync { headlessEntrypoint }
+        await MainActor.run {
+            let engine = FlutterEngine(
+                name: "flutter_assistant_intents_headless",
+                project: nil,
+                allowHeadlessExecution: true
+            )
+            guard engine.run(withEntrypoint: entrypoint) else { return }
+            boot(engine)
+            stateQueue.sync { self.headlessEngine = engine }
+        }
     }
 
     // MARK: - Intent entry points
@@ -194,6 +236,7 @@ public final class AssistantIntentBridge {
     }
 
     private func invokeDart(method: String, arguments: [String: Any]) async throws -> Any? {
+        await bootHeadlessEngineIfNeeded()
         guard await waitForHandlers(),
               let channel = stateQueue.sync(execute: { self.channel })
         else {

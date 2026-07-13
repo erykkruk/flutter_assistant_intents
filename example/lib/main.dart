@@ -11,7 +11,36 @@ final List<AssistantTask> _tasks = <AssistantTask>[
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  _registerAssistantHandlers();
 
+  unawaited(
+    AssistantIntents.instance.updateShortcuts(
+      androidShortcuts: const AndroidShortcutsConfig(
+        customShortcuts: [
+          AndroidCustomShortcut(
+            id: 'clear_completed',
+            action: 'clear_completed',
+            shortLabel: 'Clean up',
+            longLabel: 'Clear completed tasks',
+          ),
+        ],
+      ),
+    ),
+  );
+
+  runApp(const ExampleApp());
+}
+
+/// Headless entrypoint for iOS cold-start intents: Siri can boot the Dart
+/// side without the UI. Wired up in `ios/Runner/AppDelegate.swift` via
+/// `FlutterAssistantIntentsPlugin.setPluginRegistrantCallback`.
+@pragma('vm:entry-point')
+void assistantMain() {
+  WidgetsFlutterBinding.ensureInitialized();
+  _registerAssistantHandlers();
+}
+
+void _registerAssistantHandlers() {
   AssistantIntents.instance.registerHandlers(
     AssistantIntentHandlers(
       onAddTask: (request) async {
@@ -85,23 +114,6 @@ void main() {
       },
     ),
   );
-
-  unawaited(
-    AssistantIntents.instance.updateShortcuts(
-      androidShortcuts: const AndroidShortcutsConfig(
-        customShortcuts: [
-          AndroidCustomShortcut(
-            id: 'clear_completed',
-            action: 'clear_completed',
-            shortLabel: 'Clean up',
-            longLabel: 'Clear completed tasks',
-          ),
-        ],
-      ),
-    ),
-  );
-
-  runApp(const ExampleApp());
 }
 
 class ExampleApp extends StatelessWidget {

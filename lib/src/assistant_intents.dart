@@ -48,6 +48,7 @@ class AssistantIntents {
   static const String _methodQueryTasks = 'intent.queryTasks';
   static const String _methodPerformAction = 'intent.performAction';
   static const String _methodHandlersRegistered = 'handlers.registered';
+  static const String _methodHandlersSync = 'handlers.sync';
   static const String _methodUpdateShortcuts = 'shortcuts.update';
 
   static const String _genericFailureMessage =
@@ -94,6 +95,11 @@ class AssistantIntents {
       return const AssistantTaskResult.failure(_genericFailureMessage).toMap();
     }
     switch (call.method) {
+      // Native asks whether handlers are already registered — covers the
+      // boot race on iOS headless cold start, where 'handlers.registered'
+      // can fire before the plugin attaches to the new engine's channel.
+      case _methodHandlersSync:
+        return true;
       case _methodAddTask:
         final onAddTask = handlers.onAddTask;
         if (onAddTask == null) return _unsupportedActionResult();
