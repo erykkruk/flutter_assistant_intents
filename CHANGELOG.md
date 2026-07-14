@@ -18,6 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Complete-task and query-tasks phrases are unaffected (they never collided
   with a system domain).
 
+## [1.3.0] - 2026-07-14
+
+### Added
+
+- **YAML-driven code generation** (`dart run flutter_assistant_intents:generate`):
+  declare actions once in `assistant_intents.yaml` and the tool generates the
+  Runner's Swift App Intents (typed parameters, Siri phrases, task preset as
+  `package` re-export or `wrappers`), registers the file in `project.pbxproj`
+  (idempotent), and emits Dart glue (action-id constants +
+  `generatedAndroidShortcuts`). `--init` scaffolds a starter config;
+  validation enforces Apple's phrase-token and 10-shortcut rules.
+- New dependency: `yaml` (used by the generator CLI).
+
 ## [1.2.0] - 2026-07-13
 
 ### Added

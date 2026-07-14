@@ -33,12 +33,15 @@ cd example && flutter build ios --no-codesign --debug   # Verify Swift + App Int
 ## Directory Structure
 
 ```
+bin/
+└── generate.dart                    # CLI: dart run flutter_assistant_intents:generate
 lib/
 ├── flutter_assistant_intents.dart   # Barrel export (public API)
 └── src/
     ├── assistant_intents.dart       # Singleton + method-channel dispatch
     ├── handlers.dart                # AssistantIntentHandlers (task preset + onAction)
     ├── exceptions.dart              # Typed exceptions
+    ├── generator/generator.dart     # YAML→Swift/Dart codegen (NIE eksportowany w barrelu; dart:io-free logic)
     └── models/                      # Request/result/config models
 ios/
 ├── flutter_assistant_intents.podspec    # CocoaPods (source_files → ścieżka SPM)

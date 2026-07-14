@@ -176,6 +176,68 @@ struct MyAppShortcuts: AppShortcutsProvider {
 See [`example/ios/Runner/AppDelegate.swift`](example/ios/Runner/AppDelegate.swift)
 for a complete, working declaration.
 
+## Code generation — intents from YAML
+
+Instead of hand-writing the Swift declarations, declare everything in
+`assistant_intents.yaml` and let the tool generate both sides (like `intl` /
+`build_runner` codegen):
+
+```bash
+dart run flutter_assistant_intents:generate --init   # writes a starter assistant_intents.yaml
+dart run flutter_assistant_intents:generate          # (re)generates after every edit
+```
+
+```yaml
+# assistant_intents.yaml
+task_preset: package   # package (plugin built-ins, iOS 17+) | wrappers (generated into Runner, iOS 16+) | none
+
+actions:
+  - id: order_coffee
+    title: Order Coffee
+    short_title: Coffee
+    system_image: cup.and.saucer
+    phrases:
+      - "Order a coffee in ${app}"     # ${app} = the required app-name token
+    parameters:
+      - name: size
+        type: string        # string | int | double | bool
+        optional: true
+        dialog: Which size?
+    android_shortcut:
+      short_label: Coffee
+      long_label: Order a coffee
+```
+
+The generator writes:
+
+- **`ios/Runner/AssistantIntents.g.swift`** — one `AppIntent` per action
+  (typed `@Parameter`s calling your Dart `onAction`), an
+  `AppShortcutsProvider` with your Siri phrases, and the task-preset intents
+  (`wrappers`) or the `AppIntentsPackage` re-export (`package`). The file is
+  **registered in `project.pbxproj` automatically** (idempotent; Xcode
+  synchronized-group projects need no registration).
+- **`lib/assistant_intents.g.dart`** — an action-id constant per action and
+  a ready `generatedAndroidShortcuts` config:
+
+```dart
+AssistantIntents.instance.registerHandlers(
+  AssistantIntentHandlers(
+    onAction: (request) async => switch (request.action) {
+      orderCoffeeAction => await _orderCoffee(request.parameters),
+      _ => const AssistantTaskResult.failure('Unknown action.'),
+    },
+  ),
+);
+await AssistantIntents.instance.updateShortcuts(
+  androidShortcuts: generatedAndroidShortcuts,
+);
+```
+
+`task_preset: wrappers` generates the AddTask/CompleteTask/QueryTasks intents
+directly into your Runner — use it when you need iOS 16.x or hit the
+framework metadata-extraction caveat. The config validates Apple's rules
+(app-name token in every phrase, max 10 App Shortcuts) at generation time.
+
 ## iOS setup (host app)
 
 The plugin requires **iOS 16.0+** (set `platform :ios, '16.0'` in your

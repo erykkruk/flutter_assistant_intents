@@ -1,0 +1,22 @@
+# Configuration for `dart run flutter_assistant_intents:generate`.
+# Regenerate after edits:
+#   dart run flutter_assistant_intents:generate
+
+task_preset: package
+
+android_task_labels:
+  add_task_label: Add task
+  today_label: Today
+
+actions:
+  - id: clear_completed
+    title: Clear Completed Tasks
+    description: Removes all completed tasks from the list.
+    short_title: Clean Up
+    system_image: trash.circle
+    phrases:
+      - "Clean up my tasks in ${app}"
+      - "Clear completed tasks in ${app}"
+    android_shortcut:
+      short_label: Clean up
+      long_label: Clear completed tasks

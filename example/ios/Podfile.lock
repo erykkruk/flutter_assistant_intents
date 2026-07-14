@@ -1,6 +1,6 @@
 PODS:
   - Flutter (1.0.0)
-  - flutter_assistant_intents (1.1.0):
+  - flutter_assistant_intents (1.2.0):
     - Flutter
 
 DEPENDENCIES:
@@ -15,7 +15,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_assistant_intents: d45dfd1b4333db661c11785874c25bb9a483e8b8
+  flutter_assistant_intents: 9d21acde1b95d053cd34afd7aab5f5b8a4b0caed
 
 PODFILE CHECKSUM: ccbcf804758026037ab59ea9e8d83fd1ca5ecce1
 

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_assistant_intents/flutter_assistant_intents.dart';
 
+import 'assistant_intents.g.dart';
+
 /// In-memory task store standing in for a real app's repository.
 final List<AssistantTask> _tasks = <AssistantTask>[
   AssistantTask(id: '1', title: 'Water the plants', dueDate: DateTime.now()),
@@ -15,16 +17,7 @@ void main() {
 
   unawaited(
     AssistantIntents.instance.updateShortcuts(
-      androidShortcuts: const AndroidShortcutsConfig(
-        customShortcuts: [
-          AndroidCustomShortcut(
-            id: 'clear_completed',
-            action: 'clear_completed',
-            shortLabel: 'Clean up',
-            longLabel: 'Clear completed tasks',
-          ),
-        ],
-      ),
+      androidShortcuts: generatedAndroidShortcuts,
     ),
   );
 
@@ -102,7 +95,7 @@ void _registerAssistantHandlers() {
       // RunnerAppIntentsPackage note in AppDelegate.swift) and the custom
       // Android shortcut published below.
       onAction: (request) async {
-        if (request.action == 'clear_completed') {
+        if (request.action == clearCompletedAction) {
           _tasks.removeWhere((t) => t.isCompleted);
           return const AssistantTaskResult.success(
             message: 'Cleared all completed tasks.',
