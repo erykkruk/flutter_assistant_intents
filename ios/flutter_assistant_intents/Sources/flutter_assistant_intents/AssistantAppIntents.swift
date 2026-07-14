@@ -159,7 +159,16 @@ public struct AssistantShortcuts: AppShortcutsProvider {
     public static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: AddTaskIntent(),
+            // The app name must come BEFORE the noun. Siri's built-in Reminders
+            // domain claims utterances that open with "add/create a task", so a
+            // trailing "… in <app>" never reaches this intent — the phrase ends
+            // up as a reminder instead. Naming the app inside the noun phrase
+            // ("Add a <app> task") keeps the match with the app shortcut.
             phrases: [
+                "Add a \(.applicationName) task",
+                "New \(.applicationName) task",
+                "Create a \(.applicationName) task",
+                "\(.applicationName) add a task",
                 "Add a task in \(.applicationName)",
                 "Add a task to \(.applicationName)",
                 "Create a task in \(.applicationName)",

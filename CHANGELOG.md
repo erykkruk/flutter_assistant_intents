@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-14
+
+### Fixed
+
+- **Siri routed "Add a task in <app>" to Reminders instead of the app.** Siri's
+  built-in Reminders domain claims utterances that open with "add/create a
+  task", so the trailing app name never reached `AddTaskIntent`. The add-task
+  shortcut now also advertises app-name-first phrases ("Add a <app> task",
+  "New <app> task", "Create a <app> task", "<app> add a task"), which Siri
+  matches to the app shortcut. The previous phrases are kept as fallbacks.
+  Complete-task and query-tasks phrases are unaffected (they never collided
+  with a system domain).
+
 ## [1.2.0] - 2026-07-13
 
 ### Added
