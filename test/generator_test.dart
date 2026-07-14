@@ -212,6 +212,54 @@ actions:
     });
   });
 
+  group('removeFromPbxproj', () {
+    const pbxproj = '''
+/* Begin PBXBuildFile section */
+\t\tAAAAAAAAAAAAAAAAAAAAAAAA /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBBBBBBBBBBBBBBBBBBBBBB /* AppDelegate.swift */; };
+/* End PBXBuildFile section */
+/* Begin PBXFileReference section */
+\t\tBBBBBBBBBBBBBBBBBBBBBBBB /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+\t\tchildren = (
+\t\t\t\tBBBBBBBBBBBBBBBBBBBBBBBB /* AppDelegate.swift */,
+\t\t);
+\t\tfiles = (
+\t\t\t\tAAAAAAAAAAAAAAAAAAAAAAAA /* AppDelegate.swift in Sources */,
+\t\t);
+''';
+
+    test('is the exact inverse of injectIntoPbxproj', () {
+      final injected = injectIntoPbxproj(pbxproj, 'AssistantIntents.g.swift');
+      final removed = removeFromPbxproj(injected, 'AssistantIntents.g.swift');
+
+      expect(removed, pbxproj);
+    });
+
+    test('leaves unrelated files and unknown projects untouched', () {
+      expect(removeFromPbxproj(pbxproj, 'Other.g.swift'), pbxproj);
+      expect(removeFromPbxproj('not a pbxproj', 'X.g.swift'), 'not a pbxproj');
+    });
+  });
+
+  group('isGeneratedContent', () {
+    test('recognizes only files with the generator marker', () {
+      expect(
+        isGeneratedContent(
+          generateDart(GeneratorConfig.fromYamlString(_config)),
+        ),
+        isTrue,
+      );
+      expect(
+        isGeneratedContent(
+          generateSwift(GeneratorConfig.fromYamlString(_config)),
+        ),
+        isTrue,
+      );
+      expect(isGeneratedContent('import Foundation\n// hand-written'), isFalse);
+      expect(isGeneratedContent(''), isFalse);
+    });
+  });
+
   group('scaffoldTemplate', () {
     test('is itself a valid config', () {
       final config = GeneratorConfig.fromYamlString(scaffoldTemplate());
