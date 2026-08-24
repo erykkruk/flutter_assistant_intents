@@ -12,7 +12,7 @@ import Foundation
 
 /// Adds a task to the host app's list.
 @available(iOS 16.0, *)
-public struct AddTaskIntent: AppIntent {
+public struct AddTaskIntent: AppIntent, AppIntentConfirming {
     public static var title: LocalizedStringResource = "Add Task"
     public static var description = IntentDescription(
         "Adds a new task to your list."
@@ -44,7 +44,8 @@ public struct AddTaskIntent: AppIntent {
         let payload = try await AssistantIntentBridge.shared.performAddTask(
             title: taskTitle,
             dueDate: dueDate,
-            notes: notes
+            notes: notes,
+            confirming: self
         )
         let fallback = payload.success
             ? "Done. Task added."
@@ -55,7 +56,7 @@ public struct AddTaskIntent: AppIntent {
 
 /// Marks a task in the host app as completed, matched by its title.
 @available(iOS 16.0, *)
-public struct CompleteTaskIntent: AppIntent {
+public struct CompleteTaskIntent: AppIntent, AppIntentConfirming {
     public static var title: LocalizedStringResource = "Complete Task"
     public static var description = IntentDescription(
         "Marks a task from your list as done."
@@ -76,7 +77,8 @@ public struct CompleteTaskIntent: AppIntent {
 
     public func perform() async throws -> some IntentResult & ProvidesDialog {
         let payload = try await AssistantIntentBridge.shared.performCompleteTask(
-            title: taskTitle
+            title: taskTitle,
+            confirming: self
         )
         let fallback = payload.success
             ? "Done. Task completed."

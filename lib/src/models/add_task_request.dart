@@ -2,11 +2,16 @@ import '../exceptions.dart';
 
 /// A request from the platform assistant to create a new task.
 ///
-/// Produced when the user says e.g. "Add buy milk to <app name>" (iOS App
+/// Produced when the user says e.g. "Add buy milk to `<app name>`" (iOS App
 /// Intents) or taps the "Add task" app shortcut (Android).
 class AddTaskRequest {
   /// Creates a request with the spoken/typed [title] and optional details.
-  const AddTaskRequest({required this.title, this.dueDate, this.notes});
+  const AddTaskRequest({
+    required this.title,
+    this.dueDate,
+    this.notes,
+    this.choice,
+  });
 
   /// Decodes a request from the raw method-channel payload.
   ///
@@ -22,6 +27,7 @@ class AddTaskRequest {
       title: (map['title'] as String?) ?? '',
       dueDate: dueDateRaw == null ? null : DateTime.tryParse(dueDateRaw),
       notes: map['notes'] as String?,
+      choice: map['choice'] as String?,
     );
   }
 
@@ -34,6 +40,14 @@ class AddTaskRequest {
 
   /// Optional due date the user provided.
   final DateTime? dueDate;
+
+  /// Option the user picked in a confirmation prompt, or null on the first
+  /// call.
+  ///
+  /// Set only when a previous run of this handler returned
+  /// [AssistantTaskResult.needsConfirmation]; the value is the `id` of the
+  /// chosen [AssistantChoice].
+  final String? choice;
 
   /// Optional free-form notes.
   final String? notes;

@@ -6,7 +6,7 @@ import '../exceptions.dart';
 /// resolve it against their open tasks (exact or fuzzy matching).
 class CompleteTaskRequest {
   /// Creates a request for the task matching [title].
-  const CompleteTaskRequest({required this.title});
+  const CompleteTaskRequest({required this.title, this.choice});
 
   /// Decodes a request from the raw method-channel payload.
   ///
@@ -17,8 +17,19 @@ class CompleteTaskRequest {
         'completeTask payload must be a map',
       );
     }
-    return CompleteTaskRequest(title: (map['title'] as String?) ?? '');
+    return CompleteTaskRequest(
+      title: (map['title'] as String?) ?? '',
+      choice: map['choice'] as String?,
+    );
   }
+
+  /// Option the user picked in a confirmation prompt, or null on the first
+  /// call.
+  ///
+  /// Set only when a previous run of this handler returned
+  /// [AssistantTaskResult.needsConfirmation]; the value is the `id` of the
+  /// chosen [AssistantChoice].
+  final String? choice;
 
   /// Title of the task to complete, as spoken/typed by the user.
   final String title;

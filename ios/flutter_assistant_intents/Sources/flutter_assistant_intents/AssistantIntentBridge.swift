@@ -29,12 +29,15 @@ public struct AssistantResultPayload {
     public let success: Bool
     public let message: String?
     public let taskId: String?
+    /// Set when the handler asked to confirm before committing.
+    public let confirmation: AssistantConfirmationPayload?
 
     init(from value: Any?) {
         let map = value as? [String: Any] ?? [:]
         self.success = map["success"] as? Bool ?? false
         self.message = map["message"] as? String
         self.taskId = map["taskId"] as? String
+        self.confirmation = AssistantConfirmationPayload(from: map["confirmation"])
     }
 }
 
@@ -178,18 +181,22 @@ public final class AssistantIntentBridge {
     /// Bool, lists/maps of those).
     public func performAction(
         id: String,
-        parameters: [String: Any] = [:]
+        parameters: [String: Any] = [:],
+        confirming intent: (any AppIntentConfirming)? = nil
     ) async throws -> AssistantResultPayload {
-        let response = try await invokeDart(
+        return try await invokeDartResolvingConfirmations(
             method: "intent.performAction",
-            arguments: ["action": id, "parameters": parameters]
+            arguments: ["action": id, "parameters": parameters],
+            intent: intent
         )
-        return AssistantResultPayload(from: response)
     }
 
-    public func performAddTask(title: String, dueDate: Date?, notes: String?) async throws
-        -> AssistantResultPayload
-    {
+    public func performAddTask(
+        title: String,
+        dueDate: Date?,
+        notes: String?,
+        confirming intent: (any AppIntentConfirming)? = nil
+    ) async throws -> AssistantResultPayload {
         var arguments: [String: Any] = ["title": title]
         if let dueDate = dueDate {
             arguments["dueDate"] = Self.iso8601.string(from: dueDate)
@@ -197,16 +204,22 @@ public final class AssistantIntentBridge {
         if let notes = notes {
             arguments["notes"] = notes
         }
-        let response = try await invokeDart(method: "intent.addTask", arguments: arguments)
-        return AssistantResultPayload(from: response)
+        return try await invokeDartResolvingConfirmations(
+            method: "intent.addTask",
+            arguments: arguments,
+            intent: intent
+        )
     }
 
-    public func performCompleteTask(title: String) async throws -> AssistantResultPayload {
-        let response = try await invokeDart(
+    public func performCompleteTask(
+        title: String,
+        confirming intent: (any AppIntentConfirming)? = nil
+    ) async throws -> AssistantResultPayload {
+        return try await invokeDartResolvingConfirmations(
             method: "intent.completeTask",
-            arguments: ["title": title]
+            arguments: ["title": title],
+            intent: intent
         )
-        return AssistantResultPayload(from: response)
     }
 
     public func performQueryTasks(filter: String) async throws -> [AssistantTaskPayload] {
@@ -218,6 +231,47 @@ public final class AssistantIntentBridge {
             throw AssistantBridgeError.invalidPayload
         }
         return list.compactMap { AssistantTaskPayload(from: $0) }
+    }
+
+    // MARK: - Confirmation prompts
+
+    /// Hard cap on confirmation round-trips for a single intent run.
+    ///
+    /// A handler that keeps answering with another prompt would otherwise
+    /// loop forever while the user is stuck in a dialog.
+    private static let maxConfirmationRounds = 3
+
+    /// Calls Dart and, while the handler keeps asking to confirm, shows the
+    /// prompt and calls it again with the chosen option.
+    ///
+    /// Without an [intent] that can present a prompt (older systems, or a
+    /// call site that did not pass one), the pending confirmation is
+    /// reported as the unperformed result it is: the handler is not called
+    /// again, so a destructive action never runs unconfirmed.
+    private func invokeDartResolvingConfirmations(
+        method: String,
+        arguments: [String: Any],
+        intent: (any AppIntentConfirming)?
+    ) async throws -> AssistantResultPayload {
+        var arguments = arguments
+        var round = 0
+
+        while true {
+            let payload = AssistantResultPayload(
+                from: try await invokeDart(method: method, arguments: arguments)
+            )
+            guard let confirmation = payload.confirmation,
+                  let intent = intent,
+                  round < Self.maxConfirmationRounds
+            else {
+                return payload
+            }
+            round += 1
+            guard let choiceId = try await intent.requestAssistantChoice(confirmation) else {
+                return payload
+            }
+            arguments["choice"] = choiceId
+        }
     }
 
     // MARK: - Channel plumbing

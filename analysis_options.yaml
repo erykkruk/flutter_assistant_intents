@@ -13,6 +13,19 @@ linter:
     prefer_single_quotes: true
 
 analyzer:
+  # Kept in sync with Flutter's AnalysisOptionsMigration, which otherwise
+  # rewrites this file during `flutter pub get` and leaves the tree dirty
+  # for `pub publish --dry-run`. Covers every platform directory the
+  # migration can ask for, not just the two this package has today, so
+  # adding a platform later cannot silently break the release workflow.
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
   language:
     strict-casts: true
     strict-inference: true
