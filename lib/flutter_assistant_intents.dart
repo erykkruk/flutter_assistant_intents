@@ -4,7 +4,7 @@
 /// app domain.
 ///
 /// See [AssistantIntents] for the entry point.
-library flutter_assistant_intents;
+library;
 
 export 'src/assistant_intents.dart' show AssistantIntents;
 export 'src/exceptions.dart'
@@ -23,6 +23,8 @@ export 'src/models/add_task_request.dart' show AddTaskRequest;
 export 'src/models/android_shortcuts_config.dart'
     show AndroidCustomShortcut, AndroidShortcutsConfig;
 export 'src/models/assistant_action_request.dart' show AssistantActionRequest;
+export 'src/models/assistant_choice.dart'
+    show AssistantChoice, AssistantChoiceStyle;
 export 'src/models/assistant_task.dart' show AssistantTask;
 export 'src/models/assistant_task_result.dart' show AssistantTaskResult;
 export 'src/models/complete_task_request.dart' show CompleteTaskRequest;

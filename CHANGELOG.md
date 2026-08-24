@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-08-24
+
+### Added
+
+- **Confirmation prompts (iOS 26+).** A handler can answer with
+  `AssistantTaskResult.needsConfirmation(dialog:, options:)` instead of an
+  outcome. The assistant speaks the question, offers the `AssistantChoice`
+  options, and calls the same handler again with the picked option's id in
+  `request.choice`. Backed by the `requestChoice(between:dialog:)` API
+  introduced in the iOS 26 App Intents framework.
+- `AssistantChoice` and `AssistantChoiceStyle` (`normal`, `destructive`,
+  `cancel`), plus the shared `AssistantChoice.cancel` option. Unknown style
+  names decode to `normal`, so a newer native side cannot break an older
+  Dart side.
+- `choice` on `AddTaskRequest`, `CompleteTaskRequest` and
+  `AssistantActionRequest`: null on the first call, the chosen option id on
+  the follow-up.
+- `AppIntentConfirming` on the Swift side. The built-in intents adopt it;
+  host apps declaring their own intents add the conformance and pass
+  `confirming: self` to `AssistantIntentBridge` to get prompts too.
+
+### Changed
+
+- `flutter_lints` raised to `^6.0.0`; the package analyzes clean under the
+  stricter rule set.
+
+### Notes
+
+- Where a prompt cannot be shown (iOS below 26, Android shortcuts, or a call
+  site that passes no intent), the action stays **unperformed** and the
+  assistant speaks the `fallbackMessage`. That is the safe default for the
+  destructive operations confirmations are meant for.
+- A single intent run resolves at most 3 confirmation rounds, so a handler
+  that keeps asking cannot trap the user in a dialog loop.
+
 ## [1.3.1] - 2026-07-14
 
 ### Added

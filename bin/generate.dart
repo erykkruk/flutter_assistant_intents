@@ -6,7 +6,7 @@
 ///
 /// Flags:
 ///  --init             write a starter assistant_intents.yaml and exit
-///  --config <path>    config file (default: assistant_intents.yaml)
+///  --config `<path>`  config file (default: assistant_intents.yaml)
 ///  --dry-run          print what would be written, change nothing
 library;
 

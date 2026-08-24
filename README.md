@@ -33,6 +33,7 @@ Two layers, mix freely:
 | Custom app-defined actions (any domain) | ✅ custom intent in Runner → `onAction` ¹ | ✅ custom shortcut → `onAction` |
 | Shortcuts app / automations | ✅ | — |
 | Siri phrase suggestions (`AppShortcutsProvider`) | ✅ | — |
+| Confirmation prompts before a handler commits | ✅ iOS 26+ (`requestChoice`) | ❌ |
 | Launcher shortcuts (launch into the app) | — | ✅ `ShortcutManagerCompat.pushDynamicShortcut` |
 | AppFunctions (assistant-invokable in-app functions) | — | 🚧 planned — `androidx.appfunctions` is **alpha**; a clearly marked stub (`appfunctions/AppFunctionsIntegration.kt`) documents the wiring and its host-app KSP requirement |
 
@@ -175,6 +176,78 @@ struct MyAppShortcuts: AppShortcutsProvider {
 
 See [`example/ios/Runner/AppDelegate.swift`](example/ios/Runner/AppDelegate.swift)
 for a complete, working declaration.
+
+## Confirmation prompts (iOS 26+)
+
+Before doing something destructive, a handler can ask instead of answering.
+Return `AssistantTaskResult.needsConfirmation`: the assistant speaks the
+question, offers the options, and calls the **same handler again** with the
+picked option in `request.choice`.
+
+```dart
+AssistantIntents.instance.registerHandlers(
+  AssistantIntentHandlers(
+    onAction: (request) async {
+      if (request.action != 'clear_completed') {
+        return const AssistantTaskResult.failure('Unknown action.');
+      }
+
+      // First pass: nothing chosen yet, so ask.
+      if (request.choice == null) {
+        return const AssistantTaskResult.needsConfirmation(
+          dialog: 'Delete all completed tasks?',
+          options: [
+            AssistantChoice(
+              id: 'delete',
+              title: 'Delete them',
+              style: AssistantChoiceStyle.destructive,
+            ),
+            AssistantChoice.cancel,
+          ],
+          fallbackMessage: 'Open the app to clear your completed tasks.',
+        );
+      }
+
+      // Second pass: act on what the user picked.
+      if (request.choice == 'cancel') {
+        return const AssistantTaskResult.success(message: 'Nothing deleted.');
+      }
+      await repository.clearCompleted();
+      return const AssistantTaskResult.success(message: 'All clear.');
+    },
+  ),
+);
+```
+
+Nothing happens between the two calls: deciding what a choice means is the
+handler's job.
+
+**Where prompts are unavailable** (iOS below 26, or an Android shortcut) the
+action stays **unperformed** and the assistant speaks `fallbackMessage`. That
+is the safe default for the destructive operations this is meant for, so
+write a fallback that tells the user where to finish the job.
+
+A single intent run resolves at most 3 confirmation rounds, so a handler that
+keeps asking cannot trap the user in a loop.
+
+### Custom intents
+
+Host apps that declare their own intents opt in with one conformance and one
+argument:
+
+```swift
+struct ClearCompletedIntent: AppIntent, AppIntentConfirming {
+    static var title: LocalizedStringResource = "Clear Completed"
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let payload = try await AssistantIntentBridge.shared.performAction(
+            id: "clear_completed",
+            confirming: self
+        )
+        return .result(dialog: IntentDialog(stringLiteral: payload.message ?? ""))
+    }
+}
+```
 
 ## Code generation — intents from YAML
 
@@ -377,7 +450,8 @@ If your `MainActivity` overrides `onNewIntent`, keep calling
 | `QueryTasksRequest` | `filter` (`TaskQueryFilter.today` / `.all`) |
 | `AssistantActionRequest` | `action` id + `parameters` map (generic layer) |
 | `AssistantTask` | `id`, `title`, `dueDate?`, `isCompleted` |
-| `AssistantTaskResult` | `.success(message:, taskId:)` / `.failure(message)` |
+| `AssistantTaskResult` | `.success(message:, taskId:)` / `.failure(message)` / `.needsConfirmation(dialog:, options:)` |
+| `AssistantChoice` / `AssistantChoiceStyle` | One option of a confirmation prompt (`normal`, `destructive`, `cancel`) |
 | `AndroidShortcutsConfig` / `AndroidCustomShortcut` | Android shortcut labels + custom shortcuts |
 
 ## Example

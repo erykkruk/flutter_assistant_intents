@@ -11,6 +11,7 @@ class AssistantActionRequest {
   const AssistantActionRequest({
     required this.action,
     this.parameters = const <String, Object?>{},
+    this.choice,
   });
 
   /// Decodes a request from the raw method-channel payload.
@@ -35,11 +36,20 @@ class AssistantActionRequest {
       parameters: rawParameters is Map
           ? rawParameters.map((k, v) => MapEntry('$k', v))
           : const <String, Object?>{},
+      choice: map['choice'] as String?,
     );
   }
 
   /// App-defined identifier of the action (e.g. `'order_coffee'`).
   final String action;
+
+  /// Option the user picked in a confirmation prompt, or null on the first
+  /// call.
+  ///
+  /// Set only when a previous run of this handler returned
+  /// [AssistantTaskResult.needsConfirmation]; the value is the `id` of the
+  /// chosen [AssistantChoice].
+  final String? choice;
 
   /// Free-form parameters supplied by the platform intent or shortcut.
   final Map<String, Object?> parameters;
