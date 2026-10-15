@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-10-15
+
+### Fixed
+
+- **Android: stale shortcuts stayed in the launcher forever.** A custom
+  shortcut dropped from `AndroidShortcutsConfig.customShortcuts`, or the task
+  preset after switching to `publishTaskShortcuts: false`, remained published
+  because `pushDynamicShortcut` only adds. `updateShortcuts()` now removes
+  plugin shortcuts that are no longer configured. Ownership is detected by the
+  plugin's launch-intent extra, so shortcuts the host app publishes itself are
+  still never touched, and pinned copies stay pinned.
+
+### Added
+
+- Debug-mode checks in `updateShortcuts()` for `AndroidCustomShortcut`
+  entries: a blank `id` or `action`, a duplicate `id`, or an id with the
+  reserved `flutter_assistant_intents.` prefix now fails with a descriptive
+  `FlutterError` instead of being skipped or overwritten silently on the
+  native side. Release builds are unaffected.
+
 ## [1.4.0] - 2026-08-24
 
 ### Added
