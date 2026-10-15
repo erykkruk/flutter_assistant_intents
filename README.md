@@ -417,6 +417,11 @@ Notes:
 
 - Shortcuts are published with `pushDynamicShortcut` (additive) — the plugin
   **never touches shortcuts your app publishes itself**.
+- `updateShortcuts()` keeps the launcher in sync with the config: a plugin
+  shortcut you drop from `customShortcuts` (or the task preset after
+  `publishTaskShortcuts: false`) is removed on the next call.
+- Custom shortcut ids must be non-blank and unique, and must not start with
+  the reserved `flutter_assistant_intents.` prefix (checked in debug builds).
 - Keep short labels under ~10 characters; launchers truncate longer ones.
 - Labels are supplied from Dart, so **re-call `updateShortcuts()` after a
   locale change** to re-publish translated labels.

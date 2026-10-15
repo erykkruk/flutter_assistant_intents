@@ -93,7 +93,9 @@ jako extra `EXTRA_ACTION` z prefiksem `custom:`.
 3. **iOS: frazy AppShortcut muszą zawierać `\(.applicationName)`**, max 10
    App Shortcuts na apkę; `AppShortcut` wymaga `shortTitle` +
    `systemImageName`.
-4. **Android: tylko `pushDynamicShortcut`** — `setDynamicShortcuts` kasuje
+4. **Android: tylko `pushDynamicShortcut`** (+ celowane `removeDynamicShortcuts`
+   wyłącznie dla shortcutów z extra `EXTRA_ACTION`, czyli naszych, których
+   nie ma już w configu; od 1.4.1). `setDynamicShortcuts` kasuje
    shortcuty hosta (naprawiony bug, nie przywracać).
 5. **Android: shortLabel ≤ ~10 znaków**; ikony = drawable z prefiksem
    `flutter_assistant_intents_` (unikanie kolizji zasobów z hostem).

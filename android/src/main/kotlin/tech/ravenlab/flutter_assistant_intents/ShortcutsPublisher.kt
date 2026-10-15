@@ -12,7 +12,10 @@ import androidx.core.graphics.drawable.IconCompat
  *
  * Shortcuts are published with [ShortcutManagerCompat.pushDynamicShortcut]
  * (additive, not rate-limited, reports usage) so the host app's own dynamic
- * shortcuts are never replaced or removed.
+ * shortcuts are never replaced or removed. Plugin shortcuts missing from the
+ * latest config are removed by id; ownership is recognized by the
+ * [FlutterAssistantIntentsPlugin.EXTRA_ACTION] extra, which host shortcuts
+ * never carry.
  */
 internal object ShortcutsPublisher {
 
@@ -29,13 +32,15 @@ internal object ShortcutsPublisher {
     private const val RANK_CUSTOM_BASE = 2
 
     fun publish(context: Context, config: Map<*, *>?) {
+        val publishedIds = mutableSetOf<String>()
         if (config?.get("publishTaskShortcuts") as? Boolean != false) {
-            publishTaskShortcuts(context, config)
+            publishedIds += publishTaskShortcuts(context, config)
         }
-        publishCustomShortcuts(context, config?.get("customShortcuts") as? List<*>)
+        publishedIds += publishCustomShortcuts(context, config?.get("customShortcuts") as? List<*>)
+        removeStaleShortcuts(context, publishedIds)
     }
 
-    private fun publishTaskShortcuts(context: Context, labels: Map<*, *>?) {
+    private fun publishTaskShortcuts(context: Context, labels: Map<*, *>?): List<String> {
         val addShortcut = buildShortcut(
             context = context,
             id = SHORTCUT_ID_ADD_TASK,
@@ -56,9 +61,11 @@ internal object ShortcutsPublisher {
         )
         ShortcutManagerCompat.pushDynamicShortcut(context, addShortcut)
         ShortcutManagerCompat.pushDynamicShortcut(context, todayShortcut)
+        return listOf(SHORTCUT_ID_ADD_TASK, SHORTCUT_ID_QUERY_TODAY)
     }
 
-    private fun publishCustomShortcuts(context: Context, customShortcuts: List<*>?) {
+    private fun publishCustomShortcuts(context: Context, customShortcuts: List<*>?): List<String> {
+        val publishedIds = mutableListOf<String>()
         customShortcuts.orEmpty().forEachIndexed { index, raw ->
             val entry = raw as? Map<*, *> ?: return@forEachIndexed
             val id = entry.string("id") ?: return@forEachIndexed
@@ -75,8 +82,27 @@ internal object ShortcutsPublisher {
                 rank = RANK_CUSTOM_BASE + index,
             )
             ShortcutManagerCompat.pushDynamicShortcut(context, shortcut)
+            publishedIds += id
+        }
+        return publishedIds
+    }
+
+    /**
+     * Removes plugin shortcuts that are no longer configured, e.g. a custom
+     * shortcut dropped from the config or the task preset after
+     * `publishTaskShortcuts` was turned off. Pinned copies stay pinned.
+     */
+    private fun removeStaleShortcuts(context: Context, publishedIds: Set<String>) {
+        val staleIds = ShortcutManagerCompat.getDynamicShortcuts(context)
+            .filter { it.id !in publishedIds && it.isPublishedByPlugin() }
+            .map { it.id }
+        if (staleIds.isNotEmpty()) {
+            ShortcutManagerCompat.removeDynamicShortcuts(context, staleIds)
         }
     }
+
+    private fun ShortcutInfoCompat.isPublishedByPlugin(): Boolean =
+        intents.any { it.hasExtra(FlutterAssistantIntentsPlugin.EXTRA_ACTION) }
 
     private fun buildShortcut(
         context: Context,
