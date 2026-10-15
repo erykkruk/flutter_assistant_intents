@@ -67,8 +67,45 @@ public class FlutterAssistantIntentsPlugin: NSObject, FlutterPlugin {
             }
             result(nil)
 
+        case "donations.addTask", "donations.completeTask", "donations.queryTasks":
+            donate(call, result: result)
+
+        case "shortcuts.reportUsed":
+            // Android-only concept; host-declared iOS intents donate from Swift.
+            result(nil)
+
         default:
             result(FlutterMethodNotImplemented)
+        }
+    }
+
+    private func donate(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard #available(iOS 16.0, *) else {
+            result(nil)
+            return
+        }
+        let arguments = call.arguments as? [String: Any] ?? [:]
+        let method = call.method
+        Task {
+            do {
+                switch method {
+                case "donations.addTask":
+                    try await AssistantDonations.donateAddTask(arguments)
+                case "donations.completeTask":
+                    try await AssistantDonations.donateCompleteTask(arguments)
+                default:
+                    try await AssistantDonations.donateQueryTasks(arguments)
+                }
+                DispatchQueue.main.async { result(nil) }
+            } catch {
+                DispatchQueue.main.async {
+                    result(FlutterError(
+                        code: "donation_failed",
+                        message: error.localizedDescription,
+                        details: nil
+                    ))
+                }
+            }
         }
     }
 }

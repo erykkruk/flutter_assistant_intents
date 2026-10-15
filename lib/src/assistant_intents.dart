@@ -12,6 +12,7 @@ import 'models/assistant_task.dart';
 import 'models/assistant_task_result.dart';
 import 'models/complete_task_request.dart';
 import 'models/query_tasks_request.dart';
+import 'models/task_query_filter.dart';
 
 /// Entry point for exposing task actions to the platform voice assistant.
 ///
@@ -50,6 +51,10 @@ class AssistantIntents {
   static const String _methodHandlersRegistered = 'handlers.registered';
   static const String _methodHandlersSync = 'handlers.sync';
   static const String _methodUpdateShortcuts = 'shortcuts.update';
+  static const String _methodReportShortcutUsed = 'shortcuts.reportUsed';
+  static const String _methodDonateAddTask = 'donations.addTask';
+  static const String _methodDonateCompleteTask = 'donations.completeTask';
+  static const String _methodDonateQueryTasks = 'donations.queryTasks';
 
   static const String _reservedShortcutIdPrefix = 'flutter_assistant_intents.';
 
@@ -99,6 +104,89 @@ class AssistantIntents {
   }) async {
     assert(_debugCheckCustomShortcuts(androidShortcuts.customShortcuts));
     await _invokeNativeSafely(_methodUpdateShortcuts, androidShortcuts.toMap());
+  }
+
+  /// Tells the system the user just added a task **in the app's own UI**, so
+  /// it can suggest the action later.
+  ///
+  /// - **iOS:** donates the built-in Add Task intent with these values via
+  ///   `IntentDonationManager`; Siri Suggestions, Spotlight and the Lock
+  ///   Screen learn from it.
+  /// - **Android:** reports the "Add task" app shortcut as used, which feeds
+  ///   launcher ranking and shortcut predictions.
+  ///
+  /// Call it after the action succeeded, not from an assistant handler:
+  /// runs started by the assistant are recorded by the system already.
+  /// No-op-safe on platforms without an implementation.
+  ///
+  /// Throws [ArgumentError] when [title] is blank, and
+  /// [PlatformShortcutException] when the native donation fails.
+  Future<void> donateAddTask({
+    required String title,
+    DateTime? dueDate,
+    String? notes,
+  }) async {
+    _checkNotBlank(title, 'title');
+    await _invokeNativeSafely(_methodDonateAddTask, <String, Object?>{
+      'dueDate': dueDate?.toUtc().toIso8601String(),
+      'notes': notes,
+      'title': title,
+    });
+  }
+
+  /// Tells the system the user just completed a task in the app's own UI.
+  ///
+  /// iOS donates the built-in Complete Task intent. Android has no matching
+  /// launcher shortcut, so this resolves without doing anything there.
+  /// See [donateAddTask] for when to call it.
+  ///
+  /// Throws [ArgumentError] when [title] is blank, and
+  /// [PlatformShortcutException] when the native donation fails.
+  Future<void> donateCompleteTask({required String title}) async {
+    _checkNotBlank(title, 'title');
+    await _invokeNativeSafely(
+      _methodDonateCompleteTask,
+      <String, Object?>{'title': title},
+    );
+  }
+
+  /// Tells the system the user just looked at their tasks in the app.
+  ///
+  /// iOS donates the built-in Show Tasks intent with [filter]. Android
+  /// reports the "Today" app shortcut as used when [filter] is
+  /// [TaskQueryFilter.today]. See [donateAddTask] for when to call it.
+  ///
+  /// Throws [PlatformShortcutException] when the native donation fails.
+  Future<void> donateQueryTasks({
+    TaskQueryFilter filter = TaskQueryFilter.today,
+  }) =>
+      _invokeNativeSafely(
+        _methodDonateQueryTasks,
+        <String, Object?>{'filter': filter.name},
+      );
+
+  /// Reports that the user did, inside the app, what the Android shortcut
+  /// [shortcutId] does (an [AndroidCustomShortcut.id], usually).
+  ///
+  /// Android uses this for launcher ranking and shortcut predictions. iOS
+  /// has no equivalent for host-declared intents (donate those from Swift
+  /// with `IntentDonationManager`), so this resolves without doing anything
+  /// there.
+  ///
+  /// Throws [ArgumentError] when [shortcutId] is blank, and
+  /// [PlatformShortcutException] when the native call fails.
+  Future<void> reportAndroidShortcutUsed(String shortcutId) async {
+    _checkNotBlank(shortcutId, 'shortcutId');
+    await _invokeNativeSafely(
+      _methodReportShortcutUsed,
+      <String, Object?>{'id': shortcutId},
+    );
+  }
+
+  void _checkNotBlank(String value, String name) {
+    if (value.trim().isEmpty) {
+      throw ArgumentError.value(value, name, 'must not be blank');
+    }
   }
 
   bool _debugCheckCustomShortcuts(List<AndroidCustomShortcut> shortcuts) {

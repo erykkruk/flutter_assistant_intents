@@ -61,6 +61,7 @@ class AndroidCustomShortcut {
     required this.action,
     required this.shortLabel,
     String? longLabel,
+    this.icon,
   }) : longLabel = longLabel ?? shortLabel;
 
   /// Stable, unique shortcut id (used by the launcher to de-duplicate).
@@ -76,9 +77,19 @@ class AndroidCustomShortcut {
   /// Long label shown when space allows. Defaults to [shortLabel].
   final String longLabel;
 
+  /// Name of a drawable (or mipmap) resource in the host app used as the
+  /// shortcut icon, e.g. `'ic_shortcut_coffee'` for
+  /// `res/drawable/ic_shortcut_coffee.xml`.
+  ///
+  /// Null, or a name that does not resolve, falls back to the plugin's
+  /// generic action icon. A resource referenced only from here is invisible
+  /// to the resource shrinker, so keep it (`tools:keep`) in release builds.
+  final String? icon;
+
   /// Encodes the shortcut for the method channel.
   Map<String, Object?> toMap() => <String, Object?>{
         'action': action,
+        if (icon != null) 'icon': icon,
         'id': id,
         'longLabel': longLabel,
         'shortLabel': shortLabel,

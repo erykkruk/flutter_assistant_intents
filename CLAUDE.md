@@ -51,6 +51,7 @@ ios/
         ├── FlutterAssistantIntentsPlugin.swift  # Channel registration + headless boot API
         ├── AssistantIntentBridge.swift          # PUBLIC bridge: intents → Dart (timeouty!)
         ├── AssistantConfirmation.swift          # AppIntentConfirming + payloady promptu (BEZ importu Flutter — da się typecheckować solo)
+        ├── AssistantDonations.swift             # IntentDonationManager dla wbudowanych intentów (donations.*)
         └── AssistantAppIntents.swift            # Built-in AppIntents + AppShortcutsProvider + AppIntentsPackage
 android/src/main/kotlin/tech/ravenlab/flutter_assistant_intents/
 ├── FlutterAssistantIntentsPlugin.kt     # Channel + shortcut-intent capture/dispatch
@@ -65,7 +66,11 @@ Kanał: `tech.ravenlab/flutter_assistant_intents`. Metody:
 | Metoda | Kierunek | Payload |
 |---|---|---|
 | `handlers.registered` | Dart → native | — |
-| `shortcuts.update` | Dart → native | `AndroidShortcutsConfig.toMap()` |
+| `shortcuts.update` | Dart → native | `AndroidShortcutsConfig.toMap()` (custom shortcut: opcjonalny `icon`) |
+| `shortcuts.reportUsed` | Dart → native | `{id}` (Android `reportShortcutUsed`, iOS no-op) |
+| `donations.addTask` | Dart → native | `{title, dueDate? (UTC ISO-8601), notes?}` |
+| `donations.completeTask` | Dart → native | `{title}` (Android no-op) |
+| `donations.queryTasks` | Dart → native | `{filter: 'today'\|'all'}` |
 | `intent.addTask` | native → Dart | `{title, dueDate?, notes?}` |
 | `intent.completeTask` | native → Dart | `{title}` |
 | `intent.queryTasks` | native → Dart | `{filter: 'today'\|'all'}` → lista `AssistantTask.toMap()` |

@@ -95,10 +95,15 @@ class ActionParameter {
 }
 
 class AndroidShortcutSpec {
-  AndroidShortcutSpec({required this.shortLabel, required this.longLabel});
+  AndroidShortcutSpec({
+    required this.shortLabel,
+    required this.longLabel,
+    this.icon,
+  });
 
   final String shortLabel;
   final String longLabel;
+  final String? icon;
 }
 
 class ActionSpec {
@@ -157,6 +162,7 @@ class ActionSpec {
               longLabel: (androidNode['long_label'] as String?) ??
                   (androidNode['short_label'] as String?) ??
                   _titleCase(id),
+              icon: androidNode['icon'] as String?,
             )
           : null,
     );
@@ -430,8 +436,12 @@ String generateDart(GeneratorConfig config) {
         ..writeln("      id: '${action.id}',")
         ..writeln("      action: '${action.id}',")
         ..writeln('      shortLabel: ${_dartString(spec.shortLabel)},')
-        ..writeln('      longLabel: ${_dartString(spec.longLabel)},')
-        ..writeln('    ),');
+        ..writeln('      longLabel: ${_dartString(spec.longLabel)},');
+      final icon = spec.icon;
+      if (icon != null) {
+        buffer.writeln('      icon: ${_dartString(icon)},');
+      }
+      buffer.writeln('    ),');
     }
     buffer.writeln('  ],');
   }
@@ -566,6 +576,7 @@ actions:
     android_shortcut:
       short_label: Example
       long_label: Run my example
+      # icon: ic_shortcut_example   # optional drawable/mipmap in your app
 ''';
 
 // --- Task preset wrappers (Swift) ---

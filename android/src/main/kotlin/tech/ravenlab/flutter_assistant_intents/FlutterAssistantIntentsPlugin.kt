@@ -40,6 +40,11 @@ class FlutterAssistantIntentsPlugin :
 
         private const val METHOD_HANDLERS_REGISTERED = "handlers.registered"
         private const val METHOD_UPDATE_SHORTCUTS = "shortcuts.update"
+        private const val METHOD_REPORT_SHORTCUT_USED = "shortcuts.reportUsed"
+        private const val METHOD_DONATE_ADD_TASK = "donations.addTask"
+        private const val METHOD_DONATE_COMPLETE_TASK = "donations.completeTask"
+        private const val METHOD_DONATE_QUERY_TASKS = "donations.queryTasks"
+        private const val FILTER_TODAY = "today"
         private const val METHOD_INTENT_ADD_TASK = "intent.addTask"
         private const val METHOD_INTENT_QUERY_TASKS = "intent.queryTasks"
         private const val METHOD_INTENT_PERFORM_ACTION = "intent.performAction"
@@ -88,7 +93,37 @@ class FlutterAssistantIntentsPlugin :
                 }
             }
 
+            METHOD_REPORT_SHORTCUT_USED ->
+                reportShortcutUsed(call.argument<String>("id"), result)
+
+            METHOD_DONATE_ADD_TASK ->
+                reportShortcutUsed(ShortcutsPublisher.SHORTCUT_ID_ADD_TASK, result)
+
+            METHOD_DONATE_QUERY_TASKS -> {
+                val shortcutId = ShortcutsPublisher.SHORTCUT_ID_QUERY_TODAY
+                    .takeIf { call.argument<String>("filter") == FILTER_TODAY }
+                reportShortcutUsed(shortcutId, result)
+            }
+
+            // No launcher shortcut completes a task, so there is nothing to report.
+            METHOD_DONATE_COMPLETE_TASK -> result.success(null)
+
             else -> result.notImplemented()
+        }
+    }
+
+    /** Reports [shortcutId] as used; a null id answers success without a report. */
+    private fun reportShortcutUsed(shortcutId: String?, result: MethodChannel.Result) {
+        val context = applicationContext
+        if (context == null) {
+            result.error("no_context", "Plugin is not attached to a context", null)
+            return
+        }
+        try {
+            shortcutId?.let { ShortcutsPublisher.reportUsed(context, it) }
+            result.success(null)
+        } catch (e: Exception) {
+            result.error("report_failed", e.message, null)
         }
     }
 

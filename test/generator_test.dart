@@ -152,6 +152,26 @@ actions:
       );
     });
 
+    test('emits the Android shortcut icon only when declared', () {
+      final config = GeneratorConfig.fromYamlString(r'''
+actions:
+  - id: with_icon
+    phrases: ["Run ${app}"]
+    android_shortcut:
+      short_label: Run
+      icon: ic_shortcut_run
+  - id: without_icon
+    phrases: ["Stop ${app}"]
+    android_shortcut:
+      short_label: Stop
+''');
+
+      final dart = generateDart(config);
+
+      expect(dart, contains("icon: 'ic_shortcut_run',"));
+      expect(RegExp('icon:').allMatches(dart), hasLength(1));
+    });
+
     test('task_preset none disables the task shortcuts', () {
       final dart = generateDart(
         GeneratorConfig.fromYamlString('task_preset: none'),
