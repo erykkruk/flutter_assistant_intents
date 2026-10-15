@@ -23,6 +23,31 @@ Two layers, mix freely:
 > parameters and results* in Dart. On Android, custom shortcuts are 100%
 > Dart-defined.
 
+## Demo
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/erykkruk/flutter_assistant_intents/main/doc/media/android-shortcuts.gif" width="220" alt="Android launcher long-press menu with the plugin's shortcuts; tapping Clear completed tasks opens the app, which shows the Dart handler's reply" />
+      <br /><sub>Android: launcher shortcuts (custom icon) run the Dart handler</sub>
+    </td>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/erykkruk/flutter_assistant_intents/main/doc/media/ios-spotlight.gif" width="220" alt="iOS Spotlight search showing the app's App Shortcuts Clean Up, Add Task and Complete Task as the top hit" />
+      <br /><sub>iOS: App Shortcuts in Spotlight</sub>
+    </td>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/erykkruk/flutter_assistant_intents/main/doc/media/ios-shortcuts-app.gif" width="220" alt="iOS Shortcuts app listing the example app's App Shortcuts: Clean Up, Add Task, Complete Task, Show Tasks" />
+      <br /><sub>iOS: the same actions in the Shortcuts app</sub>
+    </td>
+  </tr>
+</table>
+
+Recorded from the [example](example/lib/main.dart) app on an Android 14
+emulator and an iOS 26.5 simulator. Siri itself cannot be recorded on the
+simulator, and iOS Simulator 26.5 cannot run App Shortcuts at all (Apple
+bug FB23504349), so the iOS clips show discovery; running them needs a
+device.
+
 ## Support matrix
 
 | Capability | iOS | Android |
@@ -34,6 +59,7 @@ Two layers, mix freely:
 | Shortcuts app / automations | ✅ | — |
 | Siri phrase suggestions (`AppShortcutsProvider`) | ✅ | — |
 | Confirmation prompts before a handler commits | ✅ iOS 26+ (`requestChoice`) | ❌ |
+| Donations: learn from in-app actions ([Donations](#donations)) | ✅ `IntentDonationManager` (task preset) | ✅ `reportShortcutUsed` |
 | Launcher shortcuts (launch into the app) | — | ✅ `ShortcutManagerCompat.pushDynamicShortcut` |
 | AppFunctions (assistant-invokable in-app functions) | — | 🚧 planned — `androidx.appfunctions` is **alpha**; a clearly marked stub (`appfunctions/AppFunctionsIntegration.kt`) documents the wiring and its host-app KSP requirement |
 
@@ -129,10 +155,21 @@ await AssistantIntents.instance.updateShortcuts(
         action: 'order_coffee',
         shortLabel: 'Coffee',
         longLabel: 'Order a coffee',
+        icon: 'ic_shortcut_coffee', // optional drawable/mipmap in your app
       ),
     ],
   ),
 );
+```
+
+`icon` names a drawable (or mipmap) resource of the host app; a missing or
+unknown name falls back to the plugin's generic action icon. Because the
+resource is referenced only by name, keep it from the release resource
+shrinker, e.g. in `android/app/src/main/res/raw/keep.xml`:
+
+```xml
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_shortcut_coffee" />
 ```
 
 **iOS** — declare one small intent per action in your Runner target (this is
@@ -249,6 +286,42 @@ struct ClearCompletedIntent: AppIntent, AppIntentConfirming {
 }
 ```
 
+## Donations
+
+Assistants get better at suggesting an action when they see the user do it.
+After the user completes an action **in your own UI** (not from an assistant
+handler, which the system records already), tell the platform:
+
+```dart
+// e.g. after the user saved a task from your compose screen
+await AssistantIntents.instance.donateAddTask(
+  title: task.title,
+  dueDate: task.dueDate,
+);
+await AssistantIntents.instance.donateCompleteTask(title: task.title);
+await AssistantIntents.instance.donateQueryTasks(filter: TaskQueryFilter.today);
+
+// Android: a custom shortcut's action happened in-app
+await AssistantIntents.instance.reportAndroidShortcutUsed('coffee');
+```
+
+| Call | iOS | Android |
+|---|---|---|
+| `donateAddTask` | donates `AddTaskIntent` with the values | reports the "Add task" shortcut used |
+| `donateCompleteTask` | donates `CompleteTaskIntent` | no-op (no matching shortcut) |
+| `donateQueryTasks` | donates `QueryTasksIntent` with the filter | reports "Today" used (`today` filter only) |
+| `reportAndroidShortcutUsed(id)` | no-op | reports that shortcut used |
+
+On iOS, donations feed Siri Suggestions, Spotlight and the Lock Screen; on
+Android, launcher ranking and shortcut predictions (and Google surfaces when
+the host adds `androidx.core:core-google-shortcuts`). Custom iOS intents
+declared in your Runner donate from Swift:
+`try await IntentDonationManager.shared.donate(intent: MyIntent())`.
+
+Blank titles or ids throw `ArgumentError`; a failing native donation throws
+`PlatformShortcutException`. Donations are best-effort, so a fire-and-forget
+`unawaited(...)` is fine where you don't want to handle errors.
+
 ## Code generation — intents from YAML
 
 Instead of hand-writing the Swift declarations, declare everything in
@@ -279,6 +352,7 @@ actions:
     android_shortcut:
       short_label: Coffee
       long_label: Order a coffee
+      icon: ic_shortcut_coffee   # optional, see AndroidCustomShortcut.icon
 ```
 
 The generator writes:
@@ -417,6 +491,12 @@ Notes:
 
 - Shortcuts are published with `pushDynamicShortcut` (additive) — the plugin
   **never touches shortcuts your app publishes itself**.
+- `updateShortcuts()` keeps the launcher in sync with the config: a plugin
+  shortcut you drop from `customShortcuts` (or the task preset after
+  `publishTaskShortcuts: false`) is removed on the next call.
+- Custom shortcut ids must be non-blank and unique, and must not start with
+  the reserved `flutter_assistant_intents.` prefix. Debug builds print a
+  warning for entries that break this (Android skips or overwrites them).
 - Keep short labels under ~10 characters; launchers truncate longer ones.
 - Labels are supplied from Dart, so **re-call `updateShortcuts()` after a
   locale change** to re-publish translated labels.
@@ -445,6 +525,8 @@ If your `MainActivity` overrides `onNewIntent`, keep calling
 | `AssistantIntents.instance` | Entry point (singleton) |
 | `registerHandlers(AssistantIntentHandlers)` | Wire your app's logic (all handlers optional, min. one) |
 | `updateShortcuts({AndroidShortcutsConfig})` | Refresh platform shortcut donations (no-op-safe everywhere) |
+| `donateAddTask` / `donateCompleteTask` / `donateQueryTasks` | Teach the system an action the user did in-app ([Donations](#donations)) |
+| `reportAndroidShortcutUsed(id)` | Android shortcut usage signal (iOS no-op) |
 | `AddTaskRequest` | `title`, `dueDate?`, `notes?` |
 | `CompleteTaskRequest` | `title` (resolve fuzzily in your app) |
 | `QueryTasksRequest` | `filter` (`TaskQueryFilter.today` / `.all`) |
@@ -452,7 +534,7 @@ If your `MainActivity` overrides `onNewIntent`, keep calling
 | `AssistantTask` | `id`, `title`, `dueDate?`, `isCompleted` |
 | `AssistantTaskResult` | `.success(message:, taskId:)` / `.failure(message)` / `.needsConfirmation(dialog:, options:)` |
 | `AssistantChoice` / `AssistantChoiceStyle` | One option of a confirmation prompt (`normal`, `destructive`, `cancel`) |
-| `AndroidShortcutsConfig` / `AndroidCustomShortcut` | Android shortcut labels + custom shortcuts |
+| `AndroidShortcutsConfig` / `AndroidCustomShortcut` | Android shortcut labels + custom shortcuts (optional `icon`) |
 
 ## Example
 

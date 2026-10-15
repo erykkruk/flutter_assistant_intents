@@ -1,5 +1,6 @@
 package tech.ravenlab.flutter_assistant_intents
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.pm.ShortcutInfoCompat
@@ -12,12 +13,18 @@ import androidx.core.graphics.drawable.IconCompat
  *
  * Shortcuts are published with [ShortcutManagerCompat.pushDynamicShortcut]
  * (additive, not rate-limited, reports usage) so the host app's own dynamic
- * shortcuts are never replaced or removed.
+ * shortcuts are never replaced or removed. Plugin shortcuts missing from the
+ * latest config are removed by id; ownership is recognized by the
+ * [FlutterAssistantIntentsPlugin.EXTRA_ACTION] extra, which host shortcuts
+ * never carry.
  */
 internal object ShortcutsPublisher {
 
-    private const val SHORTCUT_ID_ADD_TASK = "flutter_assistant_intents.add_task"
-    private const val SHORTCUT_ID_QUERY_TODAY = "flutter_assistant_intents.query_today"
+    const val SHORTCUT_ID_ADD_TASK = "flutter_assistant_intents.add_task"
+    const val SHORTCUT_ID_QUERY_TODAY = "flutter_assistant_intents.query_today"
+
+    private const val RESOURCE_TYPE_DRAWABLE = "drawable"
+    private const val RESOURCE_TYPE_MIPMAP = "mipmap"
 
     private const val DEFAULT_ADD_LABEL = "Add task"
     private const val DEFAULT_ADD_LONG_LABEL = "Add a new task"
@@ -29,13 +36,24 @@ internal object ShortcutsPublisher {
     private const val RANK_CUSTOM_BASE = 2
 
     fun publish(context: Context, config: Map<*, *>?) {
+        val publishedIds = mutableSetOf<String>()
         if (config?.get("publishTaskShortcuts") as? Boolean != false) {
-            publishTaskShortcuts(context, config)
+            publishedIds += publishTaskShortcuts(context, config)
         }
-        publishCustomShortcuts(context, config?.get("customShortcuts") as? List<*>)
+        publishedIds += publishCustomShortcuts(context, config?.get("customShortcuts") as? List<*>)
+        removeStaleShortcuts(context, publishedIds)
     }
 
-    private fun publishTaskShortcuts(context: Context, labels: Map<*, *>?) {
+    /**
+     * Reports that the user performed the shortcut's action inside the app,
+     * which feeds launcher ranking and shortcut predictions. Unknown ids are
+     * ignored by the system.
+     */
+    fun reportUsed(context: Context, id: String) {
+        ShortcutManagerCompat.reportShortcutUsed(context, id)
+    }
+
+    private fun publishTaskShortcuts(context: Context, labels: Map<*, *>?): List<String> {
         val addShortcut = buildShortcut(
             context = context,
             id = SHORTCUT_ID_ADD_TASK,
@@ -56,9 +74,11 @@ internal object ShortcutsPublisher {
         )
         ShortcutManagerCompat.pushDynamicShortcut(context, addShortcut)
         ShortcutManagerCompat.pushDynamicShortcut(context, todayShortcut)
+        return listOf(SHORTCUT_ID_ADD_TASK, SHORTCUT_ID_QUERY_TODAY)
     }
 
-    private fun publishCustomShortcuts(context: Context, customShortcuts: List<*>?) {
+    private fun publishCustomShortcuts(context: Context, customShortcuts: List<*>?): List<String> {
+        val publishedIds = mutableListOf<String>()
         customShortcuts.orEmpty().forEachIndexed { index, raw ->
             val entry = raw as? Map<*, *> ?: return@forEachIndexed
             val id = entry.string("id") ?: return@forEachIndexed
@@ -71,12 +91,49 @@ internal object ShortcutsPublisher {
                 longLabel = entry.string("longLabel")
                     ?: entry.string("shortLabel")
                     ?: action,
-                iconRes = R.drawable.flutter_assistant_intents_action,
+                iconRes = resolveHostIcon(context, entry.string("icon"))
+                    ?: R.drawable.flutter_assistant_intents_action,
                 rank = RANK_CUSTOM_BASE + index,
             )
             ShortcutManagerCompat.pushDynamicShortcut(context, shortcut)
+            publishedIds += id
+        }
+        return publishedIds
+    }
+
+    /**
+     * Removes plugin shortcuts that are no longer configured, e.g. a custom
+     * shortcut dropped from the config or the task preset after
+     * `publishTaskShortcuts` was turned off. Pinned copies stay pinned.
+     */
+    private fun removeStaleShortcuts(context: Context, publishedIds: Set<String>) {
+        try {
+            val staleIds = ShortcutManagerCompat.getDynamicShortcuts(context)
+                .filter { it.id !in publishedIds && it.isPublishedByPlugin() }
+                .map { it.id }
+            if (staleIds.isNotEmpty()) {
+                ShortcutManagerCompat.removeDynamicShortcuts(context, staleIds)
+            }
+        } catch (e: RuntimeException) {
+            // Best-effort cleanup added in 1.5.0: the shortcuts above were
+            // already published, and a failing cleanup must not turn a call
+            // that succeeded before 1.5.0 into a shortcuts_failed error. The
+            // next updateShortcuts() retries it.
         }
     }
+
+    /** Looks up a host app drawable (then mipmap) by name; null if absent. */
+    // Name-based lookup is the point here: the name comes from Dart, there is no R field.
+    @SuppressLint("DiscouragedApi")
+    private fun resolveHostIcon(context: Context, name: String?): Int? {
+        if (name == null) return null
+        return listOf(RESOURCE_TYPE_DRAWABLE, RESOURCE_TYPE_MIPMAP)
+            .map { type -> context.resources.getIdentifier(name, type, context.packageName) }
+            .firstOrNull { it != 0 }
+    }
+
+    private fun ShortcutInfoCompat.isPublishedByPlugin(): Boolean =
+        intents.any { it.hasExtra(FlutterAssistantIntentsPlugin.EXTRA_ACTION) }
 
     private fun buildShortcut(
         context: Context,

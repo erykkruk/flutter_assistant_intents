@@ -18,6 +18,7 @@ const AndroidShortcutsConfig generatedAndroidShortcuts = AndroidShortcutsConfig(
       action: 'clear_completed',
       shortLabel: 'Clean up',
       longLabel: 'Clear completed tasks',
+      icon: 'ic_shortcut_clean_up',
     ),
   ],
 );

@@ -12,6 +12,7 @@ import 'models/assistant_task.dart';
 import 'models/assistant_task_result.dart';
 import 'models/complete_task_request.dart';
 import 'models/query_tasks_request.dart';
+import 'models/task_query_filter.dart';
 
 /// Entry point for exposing task actions to the platform voice assistant.
 ///
@@ -50,6 +51,13 @@ class AssistantIntents {
   static const String _methodHandlersRegistered = 'handlers.registered';
   static const String _methodHandlersSync = 'handlers.sync';
   static const String _methodUpdateShortcuts = 'shortcuts.update';
+  static const String _methodReportShortcutUsed = 'shortcuts.reportUsed';
+  static const String _methodDonateAddTask = 'donations.addTask';
+  static const String _methodDonateCompleteTask = 'donations.completeTask';
+  static const String _methodDonateQueryTasks = 'donations.queryTasks';
+
+  static const String _reservedShortcutIdPrefix = 'flutter_assistant_intents.';
+  static const String _logPrefix = '[flutter_assistant_intents] Warning: ';
 
   static const String _genericFailureMessage =
       'Something went wrong. Please try again in the app.';
@@ -80,12 +88,148 @@ class AssistantIntents {
   /// - **iOS:** re-evaluates App Shortcut parameters so Siri phrase
   ///   suggestions stay current.
   ///
+  /// On Android, plugin shortcuts that are no longer part of
+  /// [androidShortcuts] (a removed custom shortcut, or the task preset after
+  /// `publishTaskShortcuts: false`) are removed. Shortcuts the host app
+  /// publishes itself are never touched.
+  ///
+  /// In debug builds, prints a warning (via [debugPrint]) for every custom
+  /// shortcut with a blank `id` or `action`, a duplicate `id`, or an id using
+  /// the plugin's reserved `flutter_assistant_intents.` prefix. Nothing is
+  /// thrown and the config is sent unchanged: Android still skips blank
+  /// entries and keeps the last of duplicate ids, as before.
+  ///
   /// No-op-safe: resolves normally when the platform has no implementation,
   /// so it can be called unconditionally on every startup.
   Future<void> updateShortcuts({
     AndroidShortcutsConfig androidShortcuts = const AndroidShortcutsConfig(),
+  }) {
+    assert(_debugWarnAboutCustomShortcuts(androidShortcuts.customShortcuts));
+    return _invokeNativeSafely(
+      _methodUpdateShortcuts,
+      androidShortcuts.toMap(),
+    );
+  }
+
+  /// Tells the system the user just added a task **in the app's own UI**, so
+  /// it can suggest the action later.
+  ///
+  /// - **iOS:** donates the built-in Add Task intent with these values via
+  ///   `IntentDonationManager`; Siri Suggestions, Spotlight and the Lock
+  ///   Screen learn from it.
+  /// - **Android:** reports the "Add task" app shortcut as used, which feeds
+  ///   launcher ranking and shortcut predictions.
+  ///
+  /// Call it after the action succeeded, not from an assistant handler:
+  /// runs started by the assistant are recorded by the system already.
+  /// No-op-safe on platforms without an implementation.
+  ///
+  /// Throws [ArgumentError] when [title] is blank, and
+  /// [PlatformShortcutException] when the native donation fails.
+  Future<void> donateAddTask({
+    required String title,
+    DateTime? dueDate,
+    String? notes,
+  }) async {
+    _checkNotBlank(title, 'title');
+    await _invokeNativeSafely(_methodDonateAddTask, <String, Object?>{
+      'dueDate': dueDate?.toUtc().toIso8601String(),
+      'notes': notes,
+      'title': title,
+    });
+  }
+
+  /// Tells the system the user just completed a task in the app's own UI.
+  ///
+  /// iOS donates the built-in Complete Task intent. Android has no matching
+  /// launcher shortcut, so this resolves without doing anything there.
+  /// See [donateAddTask] for when to call it.
+  ///
+  /// Throws [ArgumentError] when [title] is blank, and
+  /// [PlatformShortcutException] when the native donation fails.
+  Future<void> donateCompleteTask({required String title}) async {
+    _checkNotBlank(title, 'title');
+    await _invokeNativeSafely(
+      _methodDonateCompleteTask,
+      <String, Object?>{'title': title},
+    );
+  }
+
+  /// Tells the system the user just looked at their tasks in the app.
+  ///
+  /// iOS donates the built-in Show Tasks intent with [filter]. Android
+  /// reports the "Today" app shortcut as used when [filter] is
+  /// [TaskQueryFilter.today]. See [donateAddTask] for when to call it.
+  ///
+  /// Throws [PlatformShortcutException] when the native donation fails.
+  Future<void> donateQueryTasks({
+    TaskQueryFilter filter = TaskQueryFilter.today,
   }) =>
-      _invokeNativeSafely(_methodUpdateShortcuts, androidShortcuts.toMap());
+      _invokeNativeSafely(
+        _methodDonateQueryTasks,
+        <String, Object?>{'filter': filter.name},
+      );
+
+  /// Reports that the user did, inside the app, what the Android shortcut
+  /// [shortcutId] does (an [AndroidCustomShortcut.id], usually).
+  ///
+  /// Android uses this for launcher ranking and shortcut predictions. iOS
+  /// has no equivalent for host-declared intents (donate those from Swift
+  /// with `IntentDonationManager`), so this resolves without doing anything
+  /// there.
+  ///
+  /// Throws [ArgumentError] when [shortcutId] is blank, and
+  /// [PlatformShortcutException] when the native call fails.
+  Future<void> reportAndroidShortcutUsed(String shortcutId) async {
+    _checkNotBlank(shortcutId, 'shortcutId');
+    await _invokeNativeSafely(
+      _methodReportShortcutUsed,
+      <String, Object?>{'id': shortcutId},
+    );
+  }
+
+  void _checkNotBlank(String value, String name) {
+    if (value.trim().isEmpty) {
+      throw ArgumentError.value(value, name, 'must not be blank');
+    }
+  }
+
+  /// Prints a warning for each custom shortcut the native side would skip or
+  /// overwrite. Always returns true: it runs inside an `assert` (debug only)
+  /// and must never throw, so existing apps and their tests are unaffected.
+  bool _debugWarnAboutCustomShortcuts(List<AndroidCustomShortcut> shortcuts) {
+    final seenIds = <String>{};
+    for (final shortcut in shortcuts) {
+      final problem = _customShortcutProblem(shortcut, seenIds);
+      if (problem != null) {
+        debugPrint('$_logPrefix$problem');
+      }
+    }
+    return true;
+  }
+
+  String? _customShortcutProblem(
+    AndroidCustomShortcut shortcut,
+    Set<String> seenIds,
+  ) {
+    if (shortcut.id.trim().isEmpty) {
+      return 'AndroidCustomShortcut for action "${shortcut.action}" has a '
+          'blank id. Android skips it.';
+    }
+    if (shortcut.action.trim().isEmpty) {
+      return 'AndroidCustomShortcut "${shortcut.id}" has a blank action. '
+          'Android skips it.';
+    }
+    if (shortcut.id.startsWith(_reservedShortcutIdPrefix)) {
+      return 'AndroidCustomShortcut id "${shortcut.id}" uses the reserved '
+          '"$_reservedShortcutIdPrefix" prefix of the built-in shortcuts.';
+    }
+    if (!seenIds.add(shortcut.id)) {
+      return 'AndroidCustomShortcut id "${shortcut.id}" is used more than '
+          'once. Android keeps only the last one.';
+    }
+    return null;
+  }
 
   Future<Object?> _handleNativeCall(MethodCall call) async {
     final handlers = _handlers;

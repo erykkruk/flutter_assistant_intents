@@ -130,6 +130,17 @@ void main() {
         'shortLabel': 'X',
       });
     });
+
+    test('custom shortcut encodes the icon only when set', () {
+      const shortcut = AndroidCustomShortcut(
+        id: 'x',
+        action: 'do_x',
+        shortLabel: 'X',
+        icon: 'ic_shortcut_x',
+      );
+
+      expect(shortcut.toMap()['icon'], 'ic_shortcut_x');
+    });
   });
 
   group('AssistantIntentHandlers', () {

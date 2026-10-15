@@ -394,6 +394,83 @@ void main() {
       expect(refresh['longLabel'], 'Refresh', reason: 'falls back to short');
     });
 
+    group('custom shortcut warnings', () {
+      final warnings = <String>[];
+      late DebugPrintCallback originalDebugPrint;
+
+      setUp(() {
+        warnings.clear();
+        originalDebugPrint = debugPrint;
+        debugPrint = (message, {wrapWidth}) => warnings.add(message ?? '');
+      });
+
+      tearDown(() => debugPrint = originalDebugPrint);
+
+      Future<void> updateWith(List<AndroidCustomShortcut> customShortcuts) =>
+          AssistantIntents.instance.updateShortcuts(
+            androidShortcuts: AndroidShortcutsConfig(
+              customShortcuts: customShortcuts,
+            ),
+          );
+
+      List<Object?> sentShortcuts() => (outgoingCalls
+              .singleWhere((c) => c.method == 'shortcuts.update')
+              .arguments as Map<Object?, Object?>)['customShortcuts']!
+          as List<Object?>;
+
+      test('warns about duplicate ids and still sends both', () async {
+        await expectLater(
+          updateWith(const [
+            AndroidCustomShortcut(id: 'coffee', action: 'a', shortLabel: 'A'),
+            AndroidCustomShortcut(id: 'coffee', action: 'b', shortLabel: 'B'),
+          ]),
+          completes,
+        );
+
+        expect(warnings, [contains('used more than once')]);
+        expect(sentShortcuts(), hasLength(2));
+      });
+
+      test('warns about a blank id', () async {
+        await updateWith(const [
+          AndroidCustomShortcut(id: '  ', action: 'a', shortLabel: 'A'),
+        ]);
+
+        expect(warnings, [contains('blank id')]);
+        expect(sentShortcuts(), hasLength(1));
+      });
+
+      test('warns about a blank action', () async {
+        await updateWith(const [
+          AndroidCustomShortcut(id: 'coffee', action: '', shortLabel: 'A'),
+        ]);
+
+        expect(warnings, [contains('blank action')]);
+      });
+
+      test('warns about ids with the reserved built-in prefix', () async {
+        await updateWith(const [
+          AndroidCustomShortcut(
+            id: 'flutter_assistant_intents.add_task',
+            action: 'a',
+            shortLabel: 'A',
+          ),
+        ]);
+
+        expect(warnings, [contains('reserved')]);
+      });
+
+      test('stays silent for distinct ids that share an action', () async {
+        await updateWith(const [
+          AndroidCustomShortcut(id: 'small', action: 'order', shortLabel: 'S'),
+          AndroidCustomShortcut(id: 'large', action: 'order', shortLabel: 'L'),
+        ]);
+
+        expect(warnings, isEmpty);
+        expect(sentShortcuts(), hasLength(2));
+      });
+    });
+
     test('is a no-op when no platform implementation exists', () async {
       messenger.setMockMethodCallHandler(channel, null);
 
@@ -413,6 +490,106 @@ void main() {
         throwsA(
           isA<PlatformShortcutException>()
               .having((e) => e.code, 'code', 'shortcuts_failed'),
+        ),
+      );
+    });
+  });
+
+  group('donations', () {
+    MethodCall singleCall(String method) =>
+        outgoingCalls.singleWhere((c) => c.method == method);
+
+    test('donateAddTask sends the task with a UTC due date', () async {
+      await AssistantIntents.instance.donateAddTask(
+        title: 'Buy milk',
+        dueDate: DateTime.utc(2026, 10, 15, 9, 30),
+        notes: '2 litres',
+      );
+
+      expect(singleCall('donations.addTask').arguments, {
+        'dueDate': '2026-10-15T09:30:00.000Z',
+        'notes': '2 litres',
+        'title': 'Buy milk',
+      });
+    });
+
+    test('donateAddTask converts a local due date to UTC', () async {
+      final local = DateTime(2026, 10, 15, 9, 30);
+
+      await AssistantIntents.instance.donateAddTask(
+        title: 'Buy milk',
+        dueDate: local,
+      );
+
+      final args =
+          singleCall('donations.addTask').arguments as Map<Object?, Object?>;
+      expect(args['dueDate'], local.toUtc().toIso8601String());
+      expect(args['dueDate'], endsWith('Z'));
+      expect(args['notes'], isNull);
+    });
+
+    test('donateCompleteTask sends the title', () async {
+      await AssistantIntents.instance.donateCompleteTask(title: 'Buy milk');
+
+      expect(singleCall('donations.completeTask').arguments, {
+        'title': 'Buy milk',
+      });
+    });
+
+    test('donateQueryTasks sends the filter wire name', () async {
+      await AssistantIntents.instance.donateQueryTasks(
+        filter: TaskQueryFilter.all,
+      );
+      await AssistantIntents.instance.donateQueryTasks();
+
+      final filters = outgoingCalls
+          .where((c) => c.method == 'donations.queryTasks')
+          .map((c) => (c.arguments as Map<Object?, Object?>)['filter']);
+      expect(filters, ['all', 'today']);
+    });
+
+    test('reportAndroidShortcutUsed sends the shortcut id', () async {
+      await AssistantIntents.instance.reportAndroidShortcutUsed('coffee');
+
+      expect(singleCall('shortcuts.reportUsed').arguments, {'id': 'coffee'});
+    });
+
+    test('rejects blank titles and ids before calling native', () async {
+      await expectLater(
+        AssistantIntents.instance.donateAddTask(title: ' '),
+        throwsArgumentError,
+      );
+      await expectLater(
+        AssistantIntents.instance.donateCompleteTask(title: ''),
+        throwsArgumentError,
+      );
+      await expectLater(
+        AssistantIntents.instance.reportAndroidShortcutUsed(''),
+        throwsArgumentError,
+      );
+
+      expect(outgoingCalls, isEmpty);
+    });
+
+    test('is a no-op when no platform implementation exists', () async {
+      messenger.setMockMethodCallHandler(channel, null);
+
+      await expectLater(
+        AssistantIntents.instance.donateAddTask(title: 'Buy milk'),
+        completes,
+      );
+    });
+
+    test('wraps native failures in PlatformShortcutException', () async {
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        throw PlatformException(code: 'donation_failed', message: 'nope');
+      });
+
+      await expectLater(
+        AssistantIntents.instance.donateCompleteTask(title: 'Buy milk'),
+        throwsA(
+          isA<PlatformShortcutException>()
+              .having((e) => e.code, 'code', 'donation_failed'),
         ),
       );
     });

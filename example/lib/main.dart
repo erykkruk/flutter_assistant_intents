@@ -11,6 +11,22 @@ final List<AssistantTask> _tasks = <AssistantTask>[
   const AssistantTask(id: '2', title: 'Read a book'),
 ];
 
+/// Last answer a handler gave the assistant; the UI shows it and refreshes
+/// the list, so a shortcut or Siri run is visible in the app.
+final ValueNotifier<String?> _lastAssistantReply = ValueNotifier<String?>(null);
+
+AssistantTaskResult _announce(AssistantTaskResult result) {
+  _reply(result.message);
+  return result;
+}
+
+void _reply(String? message) {
+  // Reset first so the same answer twice still notifies the UI.
+  _lastAssistantReply
+    ..value = null
+    ..value = message;
+}
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   _registerAssistantHandlers();
@@ -39,8 +55,10 @@ void _registerAssistantHandlers() {
       onAddTask: (request) async {
         if (request.title.isEmpty) {
           // Android shortcut launch — a real app would open its compose UI.
-          return const AssistantTaskResult.failure(
-            'Tell me what the task should be called.',
+          return _announce(
+            const AssistantTaskResult.failure(
+              'Tell me what the task should be called.',
+            ),
           );
         }
         final task = AssistantTask(
@@ -49,9 +67,11 @@ void _registerAssistantHandlers() {
           dueDate: request.dueDate,
         );
         _tasks.add(task);
-        return AssistantTaskResult.success(
-          message: "Added '${request.title}' to your list.",
-          taskId: task.id,
+        return _announce(
+          AssistantTaskResult.success(
+            message: "Added '${request.title}' to your list.",
+            taskId: task.id,
+          ),
         );
       },
       onCompleteTask: (request) async {
@@ -59,8 +79,10 @@ void _registerAssistantHandlers() {
           (t) => t.title.toLowerCase() == request.title.toLowerCase(),
         );
         if (index == -1) {
-          return AssistantTaskResult.failure(
-            "I couldn't find a task called '${request.title}'.",
+          return _announce(
+            AssistantTaskResult.failure(
+              "I couldn't find a task called '${request.title}'.",
+            ),
           );
         }
         final task = _tasks[index];
@@ -70,13 +92,16 @@ void _registerAssistantHandlers() {
           dueDate: task.dueDate,
           isCompleted: true,
         );
-        return AssistantTaskResult.success(
-          message: "Completed '${task.title}'.",
-          taskId: task.id,
+        return _announce(
+          AssistantTaskResult.success(
+            message: "Completed '${task.title}'.",
+            taskId: task.id,
+          ),
         );
       },
       onQueryTasks: (request) async {
         final open = _tasks.where((t) => !t.isCompleted);
+        _reply("Showing ${request.filter.name}'s tasks.");
         if (request.filter == TaskQueryFilter.all) {
           return open.toList();
         }
@@ -97,12 +122,16 @@ void _registerAssistantHandlers() {
       onAction: (request) async {
         if (request.action == clearCompletedAction) {
           _tasks.removeWhere((t) => t.isCompleted);
-          return const AssistantTaskResult.success(
-            message: 'Cleared all completed tasks.',
+          return _announce(
+            const AssistantTaskResult.success(
+              message: 'Cleared all completed tasks.',
+            ),
           );
         }
-        return AssistantTaskResult.failure(
-          "I don't know the action '${request.action}'.",
+        return _announce(
+          AssistantTaskResult.failure(
+            "I don't know the action '${request.action}'.",
+          ),
         );
       },
     ),
@@ -114,21 +143,71 @@ class ExampleApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return const MaterialApp(
       title: 'Assistant Intents Example',
-      home: Scaffold(
-        appBar: AppBar(title: const Text('Assistant Intents Example')),
-        body: ListView(
-          children: [
-            for (final task in _tasks)
-              ListTile(
-                title: Text(task.title),
-                trailing: task.isCompleted
-                    ? const Icon(Icons.check)
-                    : const SizedBox.shrink(),
-              ),
-          ],
-        ),
+      home: TaskListPage(),
+    );
+  }
+}
+
+class TaskListPage extends StatefulWidget {
+  const TaskListPage({super.key});
+
+  @override
+  State<TaskListPage> createState() => _TaskListPageState();
+}
+
+class _TaskListPageState extends State<TaskListPage> {
+  @override
+  void initState() {
+    super.initState();
+    _lastAssistantReply.addListener(_showAssistantReply);
+  }
+
+  @override
+  void dispose() {
+    _lastAssistantReply.removeListener(_showAssistantReply);
+    super.dispose();
+  }
+
+  void _showAssistantReply() {
+    final reply = _lastAssistantReply.value;
+    setState(() {});
+    if (reply == null || !mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('Assistant: $reply')));
+  }
+
+  void _addTaskFromUi() {
+    final title = 'Task ${_tasks.length + 1}';
+    setState(() {
+      _tasks.add(AssistantTask(id: '${_tasks.length + 1}', title: title));
+    });
+    // The user did this in the app, so let the system learn it: Siri
+    // Suggestions / Spotlight on iOS, shortcut ranking on Android.
+    unawaited(AssistantIntents.instance.donateAddTask(title: title));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Assistant Intents Example')),
+      body: ListView(
+        children: [
+          for (final task in _tasks)
+            ListTile(
+              title: Text(task.title),
+              trailing: task.isCompleted
+                  ? const Icon(Icons.check)
+                  : const SizedBox.shrink(),
+            ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _addTaskFromUi,
+        tooltip: 'Add task',
+        child: const Icon(Icons.add),
       ),
     );
   }
