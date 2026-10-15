@@ -107,11 +107,18 @@ internal object ShortcutsPublisher {
      * `publishTaskShortcuts` was turned off. Pinned copies stay pinned.
      */
     private fun removeStaleShortcuts(context: Context, publishedIds: Set<String>) {
-        val staleIds = ShortcutManagerCompat.getDynamicShortcuts(context)
-            .filter { it.id !in publishedIds && it.isPublishedByPlugin() }
-            .map { it.id }
-        if (staleIds.isNotEmpty()) {
-            ShortcutManagerCompat.removeDynamicShortcuts(context, staleIds)
+        try {
+            val staleIds = ShortcutManagerCompat.getDynamicShortcuts(context)
+                .filter { it.id !in publishedIds && it.isPublishedByPlugin() }
+                .map { it.id }
+            if (staleIds.isNotEmpty()) {
+                ShortcutManagerCompat.removeDynamicShortcuts(context, staleIds)
+            }
+        } catch (e: RuntimeException) {
+            // Best-effort cleanup added in 1.5.0: the shortcuts above were
+            // already published, and a failing cleanup must not turn a call
+            // that succeeded before 1.5.0 into a shortcuts_failed error. The
+            // next updateShortcuts() retries it.
         }
     }
 

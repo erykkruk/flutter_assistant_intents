@@ -495,7 +495,8 @@ Notes:
   shortcut you drop from `customShortcuts` (or the task preset after
   `publishTaskShortcuts: false`) is removed on the next call.
 - Custom shortcut ids must be non-blank and unique, and must not start with
-  the reserved `flutter_assistant_intents.` prefix (checked in debug builds).
+  the reserved `flutter_assistant_intents.` prefix. Debug builds print a
+  warning for entries that break this (Android skips or overwrites them).
 - Keep short labels under ~10 characters; launchers truncate longer ones.
 - Labels are supplied from Dart, so **re-call `updateShortcuts()` after a
   locale change** to re-publish translated labels.

@@ -394,7 +394,18 @@ void main() {
       expect(refresh['longLabel'], 'Refresh', reason: 'falls back to short');
     });
 
-    group('custom shortcut validation', () {
+    group('custom shortcut warnings', () {
+      final warnings = <String>[];
+      late DebugPrintCallback originalDebugPrint;
+
+      setUp(() {
+        warnings.clear();
+        originalDebugPrint = debugPrint;
+        debugPrint = (message, {wrapWidth}) => warnings.add(message ?? '');
+      });
+
+      tearDown(() => debugPrint = originalDebugPrint);
+
       Future<void> updateWith(List<AndroidCustomShortcut> customShortcuts) =>
           AssistantIntents.instance.updateShortcuts(
             androidShortcuts: AndroidShortcutsConfig(
@@ -402,64 +413,61 @@ void main() {
             ),
           );
 
-      Matcher throwsFlutterErrorContaining(String text) => throwsA(
-            isA<FlutterError>()
-                .having((e) => e.message, 'message', contains(text)),
-          );
+      List<Object?> sentShortcuts() => (outgoingCalls
+              .singleWhere((c) => c.method == 'shortcuts.update')
+              .arguments as Map<Object?, Object?>)['customShortcuts']!
+          as List<Object?>;
 
-      test('rejects duplicate ids before calling native', () async {
+      test('warns about duplicate ids and still sends both', () async {
         await expectLater(
           updateWith(const [
             AndroidCustomShortcut(id: 'coffee', action: 'a', shortLabel: 'A'),
             AndroidCustomShortcut(id: 'coffee', action: 'b', shortLabel: 'B'),
           ]),
-          throwsFlutterErrorContaining('used more than once'),
+          completes,
         );
 
-        expect(outgoingCalls, isEmpty);
+        expect(warnings, [contains('used more than once')]);
+        expect(sentShortcuts(), hasLength(2));
       });
 
-      test('rejects a blank id', () async {
-        await expectLater(
-          updateWith(const [
-            AndroidCustomShortcut(id: '  ', action: 'a', shortLabel: 'A'),
-          ]),
-          throwsFlutterErrorContaining('blank id'),
-        );
+      test('warns about a blank id', () async {
+        await updateWith(const [
+          AndroidCustomShortcut(id: '  ', action: 'a', shortLabel: 'A'),
+        ]);
+
+        expect(warnings, [contains('blank id')]);
+        expect(sentShortcuts(), hasLength(1));
       });
 
-      test('rejects a blank action', () async {
-        await expectLater(
-          updateWith(const [
-            AndroidCustomShortcut(id: 'coffee', action: '', shortLabel: 'A'),
-          ]),
-          throwsFlutterErrorContaining('blank action'),
-        );
+      test('warns about a blank action', () async {
+        await updateWith(const [
+          AndroidCustomShortcut(id: 'coffee', action: '', shortLabel: 'A'),
+        ]);
+
+        expect(warnings, [contains('blank action')]);
       });
 
-      test('rejects ids with the reserved built-in prefix', () async {
-        await expectLater(
-          updateWith(const [
-            AndroidCustomShortcut(
-              id: 'flutter_assistant_intents.add_task',
-              action: 'a',
-              shortLabel: 'A',
-            ),
-          ]),
-          throwsFlutterErrorContaining('reserved'),
-        );
+      test('warns about ids with the reserved built-in prefix', () async {
+        await updateWith(const [
+          AndroidCustomShortcut(
+            id: 'flutter_assistant_intents.add_task',
+            action: 'a',
+            shortLabel: 'A',
+          ),
+        ]);
+
+        expect(warnings, [contains('reserved')]);
       });
 
-      test('accepts distinct ids that share an action', () async {
+      test('stays silent for distinct ids that share an action', () async {
         await updateWith(const [
           AndroidCustomShortcut(id: 'small', action: 'order', shortLabel: 'S'),
           AndroidCustomShortcut(id: 'large', action: 'order', shortLabel: 'L'),
         ]);
 
-        expect(
-          outgoingCalls.where((c) => c.method == 'shortcuts.update'),
-          hasLength(1),
-        );
+        expect(warnings, isEmpty);
+        expect(sentShortcuts(), hasLength(2));
       });
     });
 

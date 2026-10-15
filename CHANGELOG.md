@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   accepts it as `android_shortcut.icon`.
 - README demo GIFs (Android launcher shortcuts, iOS Spotlight and Shortcuts
   app). They are excluded from the published package via `.pubignore`.
+- Debug-mode warnings in `updateShortcuts()` for `AndroidCustomShortcut`
+  entries the native side skips or overwrites silently: a blank `id` or
+  `action`, a duplicate `id`, or an id with the reserved
+  `flutter_assistant_intents.` prefix. They are printed with `debugPrint`;
+  nothing is thrown and the config is sent unchanged, so existing apps and
+  their tests behave as before. Release builds print nothing.
 
 ### Fixed
 
@@ -31,14 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plugin shortcuts that are no longer configured. Ownership is detected by the
   plugin's launch-intent extra, so shortcuts the host app publishes itself are
   still never touched, and pinned copies stay pinned.
-
-### Changed
-
-- Debug-mode checks in `updateShortcuts()` for `AndroidCustomShortcut`
-  entries: a blank `id` or `action`, a duplicate `id`, or an id with the
-  reserved `flutter_assistant_intents.` prefix now fails with a descriptive
-  `FlutterError` instead of being skipped or overwritten silently on the
-  native side. Release builds are unaffected.
 
 ## [1.4.0] - 2026-08-24
 

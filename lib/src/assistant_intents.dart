@@ -57,6 +57,7 @@ class AssistantIntents {
   static const String _methodDonateQueryTasks = 'donations.queryTasks';
 
   static const String _reservedShortcutIdPrefix = 'flutter_assistant_intents.';
+  static const String _logPrefix = '[flutter_assistant_intents] Warning: ';
 
   static const String _genericFailureMessage =
       'Something went wrong. Please try again in the app.';
@@ -92,18 +93,22 @@ class AssistantIntents {
   /// `publishTaskShortcuts: false`) are removed. Shortcuts the host app
   /// publishes itself are never touched.
   ///
-  /// In debug builds, asserts that every custom shortcut has a non-blank,
-  /// unique `id` and a non-blank `action`, and that no id uses the plugin's
-  /// reserved `flutter_assistant_intents.` prefix. Such entries would
-  /// otherwise be skipped or overwritten silently on the native side.
+  /// In debug builds, prints a warning (via [debugPrint]) for every custom
+  /// shortcut with a blank `id` or `action`, a duplicate `id`, or an id using
+  /// the plugin's reserved `flutter_assistant_intents.` prefix. Nothing is
+  /// thrown and the config is sent unchanged: Android still skips blank
+  /// entries and keeps the last of duplicate ids, as before.
   ///
   /// No-op-safe: resolves normally when the platform has no implementation,
   /// so it can be called unconditionally on every startup.
   Future<void> updateShortcuts({
     AndroidShortcutsConfig androidShortcuts = const AndroidShortcutsConfig(),
-  }) async {
-    assert(_debugCheckCustomShortcuts(androidShortcuts.customShortcuts));
-    await _invokeNativeSafely(_methodUpdateShortcuts, androidShortcuts.toMap());
+  }) {
+    assert(_debugWarnAboutCustomShortcuts(androidShortcuts.customShortcuts));
+    return _invokeNativeSafely(
+      _methodUpdateShortcuts,
+      androidShortcuts.toMap(),
+    );
   }
 
   /// Tells the system the user just added a task **in the app's own UI**, so
@@ -189,35 +194,41 @@ class AssistantIntents {
     }
   }
 
-  bool _debugCheckCustomShortcuts(List<AndroidCustomShortcut> shortcuts) {
+  /// Prints a warning for each custom shortcut the native side would skip or
+  /// overwrite. Always returns true: it runs inside an `assert` (debug only)
+  /// and must never throw, so existing apps and their tests are unaffected.
+  bool _debugWarnAboutCustomShortcuts(List<AndroidCustomShortcut> shortcuts) {
     final seenIds = <String>{};
     for (final shortcut in shortcuts) {
-      if (shortcut.id.trim().isEmpty) {
-        throw FlutterError(
-          'AndroidCustomShortcut for action "${shortcut.action}" has a blank '
-          'id. Android would skip it.',
-        );
-      }
-      if (shortcut.action.trim().isEmpty) {
-        throw FlutterError(
-          'AndroidCustomShortcut "${shortcut.id}" has a blank action. '
-          'Android would skip it.',
-        );
-      }
-      if (shortcut.id.startsWith(_reservedShortcutIdPrefix)) {
-        throw FlutterError(
-          'AndroidCustomShortcut id "${shortcut.id}" uses the reserved '
-          '"$_reservedShortcutIdPrefix" prefix of the built-in shortcuts.',
-        );
-      }
-      if (!seenIds.add(shortcut.id)) {
-        throw FlutterError(
-          'AndroidCustomShortcut id "${shortcut.id}" is used more than once. '
-          'Android would keep only the last one.',
-        );
+      final problem = _customShortcutProblem(shortcut, seenIds);
+      if (problem != null) {
+        debugPrint('$_logPrefix$problem');
       }
     }
     return true;
+  }
+
+  String? _customShortcutProblem(
+    AndroidCustomShortcut shortcut,
+    Set<String> seenIds,
+  ) {
+    if (shortcut.id.trim().isEmpty) {
+      return 'AndroidCustomShortcut for action "${shortcut.action}" has a '
+          'blank id. Android skips it.';
+    }
+    if (shortcut.action.trim().isEmpty) {
+      return 'AndroidCustomShortcut "${shortcut.id}" has a blank action. '
+          'Android skips it.';
+    }
+    if (shortcut.id.startsWith(_reservedShortcutIdPrefix)) {
+      return 'AndroidCustomShortcut id "${shortcut.id}" uses the reserved '
+          '"$_reservedShortcutIdPrefix" prefix of the built-in shortcuts.';
+    }
+    if (!seenIds.add(shortcut.id)) {
+      return 'AndroidCustomShortcut id "${shortcut.id}" is used more than '
+          'once. Android keeps only the last one.';
+    }
+    return null;
   }
 
   Future<Object?> _handleNativeCall(MethodCall call) async {
