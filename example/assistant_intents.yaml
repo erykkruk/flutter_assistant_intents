@@ -20,3 +20,4 @@ actions:
     android_shortcut:
       short_label: Clean up
       long_label: Clear completed tasks
+      icon: ic_shortcut_clean_up
