@@ -394,6 +394,75 @@ void main() {
       expect(refresh['longLabel'], 'Refresh', reason: 'falls back to short');
     });
 
+    group('custom shortcut validation', () {
+      Future<void> updateWith(List<AndroidCustomShortcut> customShortcuts) =>
+          AssistantIntents.instance.updateShortcuts(
+            androidShortcuts: AndroidShortcutsConfig(
+              customShortcuts: customShortcuts,
+            ),
+          );
+
+      Matcher throwsFlutterErrorContaining(String text) => throwsA(
+            isA<FlutterError>()
+                .having((e) => e.message, 'message', contains(text)),
+          );
+
+      test('rejects duplicate ids before calling native', () async {
+        await expectLater(
+          updateWith(const [
+            AndroidCustomShortcut(id: 'coffee', action: 'a', shortLabel: 'A'),
+            AndroidCustomShortcut(id: 'coffee', action: 'b', shortLabel: 'B'),
+          ]),
+          throwsFlutterErrorContaining('used more than once'),
+        );
+
+        expect(outgoingCalls, isEmpty);
+      });
+
+      test('rejects a blank id', () async {
+        await expectLater(
+          updateWith(const [
+            AndroidCustomShortcut(id: '  ', action: 'a', shortLabel: 'A'),
+          ]),
+          throwsFlutterErrorContaining('blank id'),
+        );
+      });
+
+      test('rejects a blank action', () async {
+        await expectLater(
+          updateWith(const [
+            AndroidCustomShortcut(id: 'coffee', action: '', shortLabel: 'A'),
+          ]),
+          throwsFlutterErrorContaining('blank action'),
+        );
+      });
+
+      test('rejects ids with the reserved built-in prefix', () async {
+        await expectLater(
+          updateWith(const [
+            AndroidCustomShortcut(
+              id: 'flutter_assistant_intents.add_task',
+              action: 'a',
+              shortLabel: 'A',
+            ),
+          ]),
+          throwsFlutterErrorContaining('reserved'),
+        );
+      });
+
+      test('accepts distinct ids that share an action', () async {
+        await updateWith(const [
+          AndroidCustomShortcut(id: 'small', action: 'order', shortLabel: 'S'),
+          AndroidCustomShortcut(id: 'large', action: 'order', shortLabel: 'L'),
+        ]);
+
+        expect(
+          outgoingCalls.where((c) => c.method == 'shortcuts.update'),
+          hasLength(1),
+        );
+      });
+    });
+
     test('is a no-op when no platform implementation exists', () async {
       messenger.setMockMethodCallHandler(channel, null);
 

@@ -51,6 +51,8 @@ class AssistantIntents {
   static const String _methodHandlersSync = 'handlers.sync';
   static const String _methodUpdateShortcuts = 'shortcuts.update';
 
+  static const String _reservedShortcutIdPrefix = 'flutter_assistant_intents.';
+
   static const String _genericFailureMessage =
       'Something went wrong. Please try again in the app.';
   static const String _unsupportedActionMessage =
@@ -80,12 +82,55 @@ class AssistantIntents {
   /// - **iOS:** re-evaluates App Shortcut parameters so Siri phrase
   ///   suggestions stay current.
   ///
+  /// On Android, plugin shortcuts that are no longer part of
+  /// [androidShortcuts] (a removed custom shortcut, or the task preset after
+  /// `publishTaskShortcuts: false`) are removed. Shortcuts the host app
+  /// publishes itself are never touched.
+  ///
+  /// In debug builds, asserts that every custom shortcut has a non-blank,
+  /// unique `id` and a non-blank `action`, and that no id uses the plugin's
+  /// reserved `flutter_assistant_intents.` prefix. Such entries would
+  /// otherwise be skipped or overwritten silently on the native side.
+  ///
   /// No-op-safe: resolves normally when the platform has no implementation,
   /// so it can be called unconditionally on every startup.
   Future<void> updateShortcuts({
     AndroidShortcutsConfig androidShortcuts = const AndroidShortcutsConfig(),
-  }) =>
-      _invokeNativeSafely(_methodUpdateShortcuts, androidShortcuts.toMap());
+  }) async {
+    assert(_debugCheckCustomShortcuts(androidShortcuts.customShortcuts));
+    await _invokeNativeSafely(_methodUpdateShortcuts, androidShortcuts.toMap());
+  }
+
+  bool _debugCheckCustomShortcuts(List<AndroidCustomShortcut> shortcuts) {
+    final seenIds = <String>{};
+    for (final shortcut in shortcuts) {
+      if (shortcut.id.trim().isEmpty) {
+        throw FlutterError(
+          'AndroidCustomShortcut for action "${shortcut.action}" has a blank '
+          'id. Android would skip it.',
+        );
+      }
+      if (shortcut.action.trim().isEmpty) {
+        throw FlutterError(
+          'AndroidCustomShortcut "${shortcut.id}" has a blank action. '
+          'Android would skip it.',
+        );
+      }
+      if (shortcut.id.startsWith(_reservedShortcutIdPrefix)) {
+        throw FlutterError(
+          'AndroidCustomShortcut id "${shortcut.id}" uses the reserved '
+          '"$_reservedShortcutIdPrefix" prefix of the built-in shortcuts.',
+        );
+      }
+      if (!seenIds.add(shortcut.id)) {
+        throw FlutterError(
+          'AndroidCustomShortcut id "${shortcut.id}" is used more than once. '
+          'Android would keep only the last one.',
+        );
+      }
+    }
+    return true;
+  }
 
   Future<Object?> _handleNativeCall(MethodCall call) async {
     final handlers = _handlers;
